@@ -2,7 +2,11 @@
 
 package models
 
-import "gorm.io/gorm"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // Comment model
 type Comment struct {
@@ -48,10 +52,15 @@ type MediaAttachment struct {
 }
 
 // Hashtag model for representing hashtags in comments
-type Hashtag struct {
+type CommentsHashtag struct {
 	gorm.Model
-	Name     string    `json:"name"`
-	Comments []Comment `gorm:"many2many:comment_hashtags;"`
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Tag       string    `json:"tag"`
+	Tags      string    `json:"tags"` // Added Tags field
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Name      string    `json:"name"`
+	Comments  []Comment `gorm:"many2many:comment_hashtags;"`
 	// Add more hashtag-related fields as needed
 }
 

@@ -11,54 +11,67 @@ import (
 // Advertisement model
 type Advertisement struct {
 	gorm.Model
-	PlaylistID       uint                   `json:"-"`
-	Playlist         Playlist               `json:"playlist"`
-	ContentURL       string                 `json:"contentURL"`
-	Title            string                 `json:"title"`
-	Description      string                 `json:"description"`
-	Duration         int                    `json:"duration"` // Duration in seconds
-	ScheduledAt      time.Time              `json:"scheduledAt"`
-	Played           bool                   `json:"played" gorm:"default:false"`
-	ClickThroughURL  string                 `json:"clickThroughURL"`
-	Analytics        AdvertisementAnalytics `json:"analytics" gorm:"embedded"`
-	IsFeatured       bool                   `json:"isFeatured" gorm:"default:false"`
-	IsPublic         bool                   `json:"isPublic" gorm:"default:true"`
-	Tags             []string               `json:"tags" gorm:"type:varchar(255)[]"`
-	LikeCount        uint                   `json:"likeCount" gorm:"default:0"`
-	DislikeCount     uint                   `json:"dislikeCount" gorm:"default:0"`
-	Comments         []Comment              `gorm:"foreignKey:AdvertisementID"`
-	ShareCount       uint                   `json:"shareCount" gorm:"default:0"`
-	Followers        []User                 `gorm:"many2many:user_advertisement_followers;"`
-	Contributors     []User                 `gorm:"many2many:user_advertisement_contributors;"`
-	RelatedAds       []RelatedAd            `json:"relatedAds" gorm:"foreignKey:AdvertisementID"`
-	LastModified     int                    `json:"lastModified" gorm:"autoUpdateTime"`
-	PrivacySetting   PrivacySetting         `json:"privacySetting" gorm:"embedded"`
-	Location         Location               `json:"location" gorm:"embedded"`
-	VideoQuality     string                 `json:"videoQuality"`
-	AudioQuality     string                 `json:"audioQuality"`
-	Caption          string                 `json:"caption"`
-	Language         string                 `json:"language"`
-	TargetAudience   string                 `json:"targetAudience"`
-	MatureContent    bool                   `json:"matureContent"`
-	ThumbnailURL     string                 `json:"thumbnailURL"`
-	ExternalLinks    []ExternalLink         `json:"externalLinks" gorm:"foreignKey:AdvertisementID"`
-	MediaAttachments []MediaAttachment      `json:"mediaAttachments" gorm:"foreignKey:AdvertisementID"`
-	Hashtags         []Hashtag              `json:"hashtags" gorm:"foreignKey:AdvertisementID"`
+	ID                    uint                   `json:"id" gorm:"primaryKey"`
+	Name                  string                 `json:"name"`
+	PlaylistID            uint                   `json:"-"`
+	Playlist              Playlist               `json:"playlist"`
+	ContentURL            string                 `json:"contentURL"`
+	Title                 string                 `json:"title"`
+	Description           string                 `json:"description"`
+	Duration              int                    `json:"duration"` // Duration in seconds
+	ScheduledAt           time.Time              `json:"scheduledAt"`
+	Played                bool                   `json:"played" gorm:"default:false"`
+	ClickThroughURL       string                 `json:"clickThroughURL"`
+	Analytics             AdvertisementAnalytics `json:"analytics" gorm:"embedded"`
+	IsFeatured            bool                   `json:"isFeatured" gorm:"default:false"`
+	IsPublic              bool                   `json:"isPublic" gorm:"default:true"`
+	Tags                  []string               `json:"tags" gorm:"type:varchar(255)[]"`
+	LikeCount             uint                   `json:"likeCount" gorm:"default:0"`
+	DislikeCount          uint                   `json:"dislikeCount" gorm:"default:0"`
+	Comments              []Comment              `gorm:"foreignKey:AdvertisementID"`
+	ShareCount            uint                   `json:"shareCount" gorm:"default:0"`
+	Followers             []User                 `gorm:"many2many:user_advertisement_followers;"`
+	Contributors          []User                 `gorm:"many2many:user_advertisement_contributors;"`
+	RelatedAds            []RelatedAd            `json:"relatedAds" gorm:"foreignKey:AdvertisementID"`
+	LastModified          int                    `json:"lastModified" gorm:"autoUpdateTime"`
+	PrivacySetting        PrivacySetting         `json:"privacySetting" gorm:"embedded"`
+	Location              Location               `json:"location" gorm:"embedded"`
+	VideoQuality          string                 `json:"videoQuality"`
+	AudioQuality          string                 `json:"audioQuality"`
+	Caption               string                 `json:"caption"`
+	Language              string                 `json:"language"`
+	Label                 string                 `json:"label"`
+	CreatedAt             time.Time              `json:"createdAt"`
+	UpdatedAt             time.Time              `json:"updatedAt"`
+	TargetAudience        string                 `json:"targetAudience"`
+	MatureContent         bool                   `json:"matureContent"`
+	ThumbnailURL          string                 `json:"thumbnailURL"`
+	ExternalLinks         []ExternalLink         `json:"externalLinks" gorm:"foreignKey:AdvertisementID"`
+	MediaAttachments      []MediaAttachment      `json:"mediaAttachments" gorm:"foreignKey:AdvertisementID"`
+	AdvertisementHashtags []AdvertisementHashtag `json:"hashtags" gorm:"foreignKey:AdvertisementID"`
+	StartDate             time.Time              `json:"start_date"`
+	EndDate               time.Time              `json:"end_date"`
 }
 
 // AdvertisementAnalytics struct for tracking advertisement analytics
 type AdvertisementAnalytics struct {
-	Views                uint    `json:"views" gorm:"default:0"`
-	Clicks               uint    `json:"clicks" gorm:"default:0"`
-	Comments             uint    `json:"comments" gorm:"default:0"`
-	Shares               uint    `json:"shares" gorm:"default:0"`
-	Likes                uint    `json:"likes" gorm:"default:0"`
-	Dislikes             uint    `json:"dislikes" gorm:"default:0"`
-	Followers            uint    `json:"followers" gorm:"default:0"`
-	PlayCount            uint    `json:"playCount" gorm:"default:0"`
-	TotalDurationWatched int     `json:"totalDurationWatched" gorm:"default:0"`
-	ClickThroughCount    uint    `json:"clickThroughCount" gorm:"default:0"`
-	ConversionRate       float64 `json:"conversionRate" gorm:"default:0.0"`
+	ID                   uint      `gorm:"primaryKey" json:"id"`
+	AdvertisementID      uint      `gorm:"index" json:"advertisement_id"`
+	Views                uint      `json:"views" gorm:"default:0"`
+	Clicks               uint      `json:"clicks" gorm:"default:0"`
+	Comments             uint      `json:"comments" gorm:"default:0"`
+	Shares               uint      `json:"shares" gorm:"default:0"`
+	Likes                uint      `json:"likes" gorm:"default:0"`
+	Dislikes             uint      `json:"dislikes" gorm:"default:0"`
+	Followers            uint      `json:"followers" gorm:"default:0"`
+	PlayCount            uint      `json:"playCount" gorm:"default:0"`
+	TotalDurationWatched int       `json:"totalDurationWatched" gorm:"default:0"`
+	ClickThroughCount    uint      `json:"clickThroughCount" gorm:"default:0"`
+	ConversionRate       float64   `json:"conversionRate" gorm:"default:0.0"`
+	Conversions          uint      `json:"conversions"` // Added Conversions field
+	Revenue              float64   `json:"revenue"`     // Added Revenue field
+	CreatedAt            time.Time `json:"created_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 	// Add more analytics fields as needed
 }
 
@@ -91,6 +104,7 @@ type ExternalLink struct {
 	Description     string `json:"description"`
 	IsFeatured      bool   `json:"isFeatured" gorm:"default:false"`
 	IsAffiliate     bool   `json:"isAffiliate" gorm:"default:false"`
+	Label           string `json:"label"`
 	// Add more fields as needed
 }
 
@@ -110,9 +124,23 @@ type AdvertisementMediaAttachment struct {
 // Hashtag struct for storing hashtags related to the advertisement
 type AdvertisementHashtag struct {
 	gorm.Model
-	AdvertisementID uint   `json:"-"`
-	Text            string `json:"text"`
+	ID              uint      `gorm:"primaryKey" json:"id"`
+	Tag             string    `json:"tag"`
+	Tags            string    `json:"tags"` // Added Tags field
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	AdvertisementID uint      `json:"-"`
+	Text            string    `json:"text"`
 	// Add more fields as needed
+}
+
+// Hashtag represents a hashtag entity
+type Hashtag struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Tag       string    `json:"tag"`
+	Tags      string    `json:"tags"` // Added Tags field
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // RelatedAd struct for storing related advertisements
@@ -124,19 +152,27 @@ type RelatedAd struct {
 }
 
 // AdvertisementModel handles database operations for Advertisement
-type AdvertisementModel struct {
+type AdvertisementDBModel struct {
 	DB *gorm.DB
 }
 
 // NewAdvertisementModel creates a new instance of AdvertisementModel
-func NewAdvertisementModel(db *gorm.DB) *AdvertisementModel {
-	return &AdvertisementModel{
+func NewAdvertisementDBModel(db *gorm.DB) *AdvertisementDBModel {
+	return &AdvertisementDBModel{
 		DB: db,
 	}
 }
 
+// AdvertisementModel is the model interface for advertisement-related operations
+type AdvertisementModel interface {
+	GetAllAdvertisements() ([]Advertisement, error)
+	CreateAdvertisement(ad *Advertisement) error
+	UpdateAdvertisement(ad *Advertisement) error
+	DeleteAdvertisement(id uint) error
+}
+
 // GetNextAdvertisementForPlaylist fetches the next advertisement to play for a playlist
-func (am *AdvertisementModel) GetNextAdvertisementForPlaylist(playlistID uint) (*Advertisement, error) {
+func (am *AdvertisementDBModel) GetNextAdvertisementForPlaylist(playlistID uint) (*Advertisement, error) {
 	var advertisement Advertisement
 	if err := am.DB.Where("playlist_id = ? AND scheduled_at <= ? AND played = ?", playlistID, time.Now(), false).Order("scheduled_at").First(&advertisement).Error; err != nil {
 		return nil, err
@@ -146,7 +182,7 @@ func (am *AdvertisementModel) GetNextAdvertisementForPlaylist(playlistID uint) (
 }
 
 // MarkAdvertisementAsPlayed marks an advertisement as played (update status or other relevant fields)
-func (am *AdvertisementModel) MarkAdvertisementAsPlayed(advertisementID uint) error {
+func (am *AdvertisementDBModel) MarkAdvertisementAsPlayed(advertisementID uint) error {
 	var advertisement Advertisement
 	if err := am.DB.First(&advertisement, advertisementID).Error; err != nil {
 		return err
@@ -163,7 +199,7 @@ func (am *AdvertisementModel) MarkAdvertisementAsPlayed(advertisementID uint) er
 }
 
 // GetAdvertisementByID fetches an advertisement by its ID
-func (am *AdvertisementModel) GetAdvertisementByID(advertisementID uint) (*Advertisement, error) {
+func (am *AdvertisementDBModel) GetAdvertisementByID(advertisementID uint) (*Advertisement, error) {
 	var advertisement Advertisement
 	if err := am.DB.Preload("Playlist").Preload("Comments").Preload("Followers").Preload("Contributors").Preload("RelatedAds").First(&advertisement, advertisementID).Error; err != nil {
 		return nil, err
@@ -172,7 +208,7 @@ func (am *AdvertisementModel) GetAdvertisementByID(advertisementID uint) (*Adver
 }
 
 // GetAllAdvertisements fetches all advertisements
-func (am *AdvertisementModel) GetAllAdvertisements() ([]Advertisement, error) {
+func (am *AdvertisementDBModel) GetAllAdvertisements() ([]Advertisement, error) {
 	var advertisements []Advertisement
 	if err := am.DB.Preload("Playlist").Preload("Comments").Preload("Followers").Preload("Contributors").Preload("RelatedAds").Find(&advertisements).Error; err != nil {
 		return nil, err
@@ -181,7 +217,7 @@ func (am *AdvertisementModel) GetAllAdvertisements() ([]Advertisement, error) {
 }
 
 // CreateAdvertisement creates a new advertisement
-func (am *AdvertisementModel) CreateAdvertisement(advertisement *Advertisement) error {
+func (am *AdvertisementDBModel) CreateAdvertisement(advertisement *Advertisement) error {
 	if err := am.DB.Create(advertisement).Error; err != nil {
 		return err
 	}
@@ -189,7 +225,7 @@ func (am *AdvertisementModel) CreateAdvertisement(advertisement *Advertisement) 
 }
 
 // UpdateAdvertisement updates an existing advertisement
-func (am *AdvertisementModel) UpdateAdvertisement(advertisement *Advertisement) error {
+func (am *AdvertisementDBModel) UpdateAdvertisement(advertisement *Advertisement) error {
 	if err := am.DB.Save(advertisement).Error; err != nil {
 		return err
 	}
@@ -197,7 +233,7 @@ func (am *AdvertisementModel) UpdateAdvertisement(advertisement *Advertisement) 
 }
 
 // DeleteAdvertisement deletes an advertisement by its ID
-func (am *AdvertisementModel) DeleteAdvertisement(advertisementID uint) error {
+func (am *AdvertisementDBModel) DeleteAdvertisement(advertisementID uint) error {
 	if err := am.DB.Delete(&Advertisement{}, advertisementID).Error; err != nil {
 		return err
 	}
@@ -205,7 +241,7 @@ func (am *AdvertisementModel) DeleteAdvertisement(advertisementID uint) error {
 }
 
 // GetAdvertisementsByPlaylistID fetches all advertisements for a specific playlist
-func (am *AdvertisementModel) GetAdvertisementsByPlaylistID(playlistID uint) ([]Advertisement, error) {
+func (am *AdvertisementDBModel) GetAdvertisementsByPlaylistID(playlistID uint) ([]Advertisement, error) {
 	var advertisements []Advertisement
 	if err := am.DB.Where("playlist_id = ?", playlistID).Preload("Playlist").Preload("Comments").Preload("Followers").Preload("Contributors").Preload("RelatedAds").Find(&advertisements).Error; err != nil {
 		return nil, err

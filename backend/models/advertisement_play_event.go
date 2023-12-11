@@ -15,7 +15,7 @@ type AdvertisementPlayEvent struct {
 }
 
 // LogAdvertisementPlayEvent logs an event when an advertisement is played
-func (am *AdvertisementModel) LogAdvertisementPlayEvent(advertisementID, playlistID uint) error {
+func (am *AdvertisementDBModel) LogAdvertisementPlayEvent(advertisementID, playlistID uint) error {
 	playEvent := AdvertisementPlayEvent{
 		AdvertisementID: advertisementID,
 		PlaylistID:      playlistID,

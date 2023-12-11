@@ -28,7 +28,7 @@ func main() {
 
 	// Create models
 	playlistModel := models.NewPlaylistModel(db)
-	advertisementModel := models.NewAdvertisementModel(db)
+	advertisementModel := models.NewAdvertisementDBModel(db)
 
 	// Create controllers
 	playbackService := &controllers.SimplePlaybackService{} // Use your preferred playback service implementation
@@ -64,9 +64,12 @@ func main() {
 func runAdvertisementScheduler(ctx context.Context, advertisementController *controllers.AdvertisementController) error {
 	c := cron.New()
 
+	// Schedule a daily job to update and refresh advertisements
 	_, err := c.AddFunc("0 0 * * *", func() {
-		// Run a daily job to update and refresh advertisements
-		// Add logic to refresh advertisements as needed
+		err := advertisementController.UpdateAndRefreshAdvertisements()
+		if err != nil {
+			fmt.Println("Error updating and refreshing advertisements:", err)
+		}
 	})
 	if err != nil {
 		return err
