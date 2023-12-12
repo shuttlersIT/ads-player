@@ -166,9 +166,16 @@ func NewAdvertisementDBModel(db *gorm.DB) *AdvertisementDBModel {
 // AdvertisementModel is the model interface for advertisement-related operations
 type AdvertisementModel interface {
 	GetAllAdvertisements() ([]Advertisement, error)
+	GetAdvertisementByID(id uint) (*Advertisement, error)
 	CreateAdvertisement(ad *Advertisement) error
 	UpdateAdvertisement(ad *Advertisement) error
 	DeleteAdvertisement(id uint) error
+	GetCurrentAdvertisement(id uint) (*Advertisement, error)
+	GetNextAdvertisement(id uint) (*Advertisement, error)
+	GetAdvertisementsByPlaylistID(playlistID uint) ([]Advertisement, error)
+	GetNextAdvertisementForPlaylist(playlistID uint) (*Advertisement, error)
+	MarkAdvertisementAsPlayed(id uint) error
+	UpdateAdvertisementPlayStatus(id uint, played bool) error
 }
 
 // GetNextAdvertisementForPlaylist fetches the next advertisement to play for a playlist
@@ -247,4 +254,41 @@ func (am *AdvertisementDBModel) GetAdvertisementsByPlaylistID(playlistID uint) (
 		return nil, err
 	}
 	return advertisements, nil
+}
+
+// Example implementation of UpdateAdvertisementPlayStatus
+func (am *AdvertisementDBModel) UpdateAdvertisementPlayStatus(advertisementID uint, played bool) error {
+	// Replace this example code with your actual logic to update the play status of an advertisement
+	if err := am.DB.Model(&Advertisement{}).
+		Where("id = ?", advertisementID).
+		Update("played", played).
+		Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// Example implementation of getNextAdvertisement
+func (am *AdvertisementDBModel) GetNextAdvertisement(playlistID uint) (*Advertisement, error) {
+	// Replace this example code with your actual logic to get the next advertisement
+	var nextAdvertisement Advertisement
+	if err := am.DB.Model(&Advertisement{}).
+		Where("playlist_id = ? AND start_date <= ? AND end_date >= ? AND played = false", playlistID, time.Now(), time.Now()).
+		Order("priority DESC, created_at").
+		First(&nextAdvertisement).Error; err != nil {
+		return nil, err
+	}
+
+	return &nextAdvertisement, nil
+}
+
+// GetCurrentAdvertisement retrieves the current advertisement from the database
+func (am *AdvertisementDBModel) GetCurrentAdvertisement(id uint) (*Advertisement, error) {
+	// Your implementation to retrieve the current advertisement from the database
+	var ad Advertisement
+	if err := am.DB.First(&ad, id).Error; err != nil {
+		return nil, err
+	}
+	return &ad, nil
 }

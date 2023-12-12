@@ -69,19 +69,43 @@ type PrivacySetting struct {
 }
 
 // PlaylistModel handles database operations for Playlist
-type PlaylistModel struct {
+type PlaylistDBModel struct {
 	DB *gorm.DB
 }
 
 // NewPlaylistModel creates a new instance of PlaylistModel
-func NewPlaylistModel(db *gorm.DB) *PlaylistModel {
-	return &PlaylistModel{
+func NewPlaylistModel(db *gorm.DB) *PlaylistDBModel {
+	return &PlaylistDBModel{
 		DB: db,
 	}
 }
 
+type PlaylistModel interface {
+	GetCurrentPlaylist(id uint) (*Playlist, error)
+	UpdateLastScheduledTime(id uint, lastScheduledTime time.Time) error
+	GetPlaylistsForAdvertisements() ([]Playlist, error)
+	GetPlaylistsForAdvertisementsFreshness() ([]Playlist, error)
+	GetPlaylistsForAdvertisementsByPopularity() ([]Playlist, error)
+	hasActiveAdvertisements() bool
+	sortPlaylistsByPopularity([]*Playlist)
+	sortPlaylistsByFreshness([]*Playlist)
+	calculateTotalViews(playlist *Playlist) int
+	hasHighPopularity(playlist *Playlist) bool
+	isFreshPlaylist(playlist *Playlist) bool
+}
+
+// GetCurrentPlaylist retrieves the current playlist from the database
+func (am *PlaylistDBModel) GetCurrentPlaylist(id uint) (*Playlist, error) {
+	// Your implementation to retrieve the current playlist from the database
+	var playlist Playlist
+	if err := am.DB.First(&playlist, id).Error; err != nil {
+		return nil, err
+	}
+	return &playlist, nil
+}
+
 // UpdateLastScheduledTime updates the last scheduled time for a playlist
-func (pm *PlaylistModel) UpdateLastScheduledTime(playlistID uint, lastScheduledTime time.Time) error {
+func (pm *PlaylistDBModel) UpdateLastScheduledTime(playlistID uint, lastScheduledTime time.Time) error {
 	var playlist Playlist
 	if err := pm.DB.First(&playlist, playlistID).Error; err != nil {
 		return err
@@ -96,7 +120,7 @@ func (pm *PlaylistModel) UpdateLastScheduledTime(playlistID uint, lastScheduledT
 }
 
 // GetPlaylistsForAdvertisements fetches playlists that have associated advertisements
-func (pm *PlaylistModel) GetPlaylistsForAdvertisements() ([]Playlist, error) {
+func (pm *PlaylistDBModel) GetPlaylistsForAdvertisements() ([]Playlist, error) {
 	var playlists []Playlist
 	if err := pm.DB.Preload("Advertisements").Find(&playlists).Error; err != nil {
 		log.Printf("Error fetching playlists with advertisements: %v", err)
@@ -131,7 +155,7 @@ func (pm *PlaylistModel) GetPlaylistsForAdvertisements() ([]Playlist, error) {
 }
 
 // GetPlaylistsForAdvertisements fetches playlists that have associated advertisements
-func (pm *PlaylistModel) GetPlaylistsForAdvertisementsFreshness() ([]Playlist, error) {
+func (pm *PlaylistDBModel) GetPlaylistsForAdvertisementsFreshness() ([]Playlist, error) {
 	var playlists []Playlist
 	if err := pm.DB.Preload("Advertisements").Find(&playlists).Error; err != nil {
 		log.Printf("Error fetching playlists with advertisements: %v", err)
@@ -164,7 +188,7 @@ func (pm *PlaylistModel) GetPlaylistsForAdvertisementsFreshness() ([]Playlist, e
 }
 
 /* ][][][][][][][][][][][][][][][][][][][][][][][][][][[][][]][][][][][][][][][][][*/
-func (pm *PlaylistModel) GetPlaylistsForAdvertisementsByPopularity() ([]Playlist, error) {
+func (pm *PlaylistDBModel) GetPlaylistsForAdvertisementsByPopularity() ([]Playlist, error) {
 	var playlists []Playlist
 	if err := pm.DB.Preload("Advertisements").Find(&playlists).Error; err != nil {
 		log.Printf("Error fetching playlists with advertisements: %v", err)

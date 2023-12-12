@@ -13,20 +13,26 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 
 	"github.com/robfig/cron/v3"
 	"github.com/shuttlersit/ads-player/backend/models"
+	"github.com/shuttlersit/ads-player/backend/services"
 )
 
 // AdvertisementController handles advertisement scheduling and playback
 type AdvertisementController struct {
-	PlaylistModel      *models.PlaylistModel
+	PlaylistModel      *models.PlaylistDBModel
 	AdvertisementModel *models.AdvertisementDBModel
 	PlaybackService    PlaybackService
+	S3Service          services.S3Service // Assume you have an S3Service interface for fetching from AWS S3
+	webSocketConn      *websocket.Conn
+	upgrader           websocket.Upgrader
 }
 
 // NewAdvertisementController creates a new instance of AdvertisementController
-func NewAdvertisementController(playlistModel *models.PlaylistModel, advertisementModel *models.AdvertisementDBModel, playbackService PlaybackService) *AdvertisementController {
+func NewAdvertisementController(playlistModel *models.PlaylistDBModel, advertisementModel *models.AdvertisementDBModel, playbackService PlaybackService) *AdvertisementController {
 	return &AdvertisementController{
 		PlaylistModel:      playlistModel,
 		AdvertisementModel: advertisementModel,
@@ -202,6 +208,58 @@ func (ac *AdvertisementController) UpdateAndRefreshAdvertisements() error {
 	log.Printf("Advertisements refreshed at: %v\n", time.Now())
 
 	return nil
+}
+
+// UpdateAndRefreshAdvertisements updates and refreshes advertisements
+func (ac *AdvertisementController) UpdateAndRefreshAdvertisementsExternal() error {
+	fmt.Println("Updating and refreshing advertisements...")
+
+	// Fetch new advertisements from the external source (AWS S3 bucket)
+	newAdvertisements, err := ac.S3Service.FetchAdvertisementsFromS3()
+	if err != nil {
+		return err
+	}
+
+	// Compare and update advertisements
+	ac.compareAndUpdateAdvertisements(newAdvertisements)
+
+	fmt.Println("Advertisements updated and refreshed successfully.")
+	return nil
+}
+
+// compareAndUpdateAdvertisements compares the existing and new advertisements and updates accordingly
+func (ac *AdvertisementController) compareAndUpdateAdvertisements(newAdvertisements []models.Advertisement) {
+	existingAdvertisements, err := ac.AdvertisementModel.GetAllAdvertisements()
+	if err != nil {
+		fmt.Println("Error fetching existing advertisements:", err)
+		return
+	}
+
+	// Logic to compare and update advertisements (replace with your business logic)
+	for _, newAd := range newAdvertisements {
+		existingAd, found := findAdvertisement(existingAdvertisements, newAd.ID)
+		if found {
+			// Advertisement exists, update if needed
+			if !areAdvertisementsEqual(&existingAd, &newAd) {
+				ac.AdvertisementModel.UpdateAdvertisement(&newAd)
+				fmt.Printf("Advertisement %d updated.\n", newAd.ID)
+			}
+		} else {
+			// Advertisement doesn't exist, insert as a new advertisement
+			ac.AdvertisementModel.CreateAdvertisement(&newAd)
+			fmt.Printf("New advertisement %d inserted.\n", newAd.ID)
+		}
+	}
+}
+
+// findAdvertisement finds an advertisement in the list by ID
+func findAdvertisement(advertisements []models.Advertisement, id uint) (models.Advertisement, bool) {
+	for _, ad := range advertisements {
+		if ad.ID == id {
+			return ad, true
+		}
+	}
+	return models.Advertisement{}, false
 }
 
 // fetchNewAdvertisements fetches new advertisements from an AWS S3 bucket
@@ -430,7 +488,7 @@ func areAdvertisementHashtagsEqual(tags1, tags2 []models.AdvertisementHashtag) b
 
 	// Compare each Hashtag
 	for i := range tags1 {
-		if tags1[i].Tag != tags2[i].Tag {
+		if tags1[i].Tag != tags2[i].Tag || tags1[i].Tags != tags2[i].Tags {
 			return false
 		}
 	}
@@ -439,7 +497,7 @@ func areAdvertisementHashtagsEqual(tags1, tags2 []models.AdvertisementHashtag) b
 }
 
 // areHashtagsEqual checks if two slices of Hashtag structs are equal
-func areHashtagsEqual(tags1, tags2 []models.Hashtag) bool {
+func AreHashtagsEqual(tags1, tags2 []models.Hashtag) bool {
 	if len(tags1) != len(tags2) {
 		return false
 	}
@@ -461,4 +519,291 @@ func areAdvertisementAnalyticsEqual(analytics1, analytics2 models.AdvertisementA
 		analytics1.Conversions == analytics2.Conversions && // Added Conversions field
 		analytics1.Revenue == analytics2.Revenue // Added Revenue field
 	// Add more field comparisons based on your AdvertisementAnalytics struct
+}
+
+// GetAllAdvertisements retrieves all advertisements from the database
+func (ac *AdvertisementController) GetAllAdvertisements() ([]models.Advertisement, error) {
+	return ac.AdvertisementModel.GetAllAdvertisements()
+}
+
+// GetAdvertisementByID retrieves an advertisement by its ID
+func (ac *AdvertisementController) GetAdvertisementByID(id uint) (*models.Advertisement, error) {
+	return ac.AdvertisementModel.GetAdvertisementByID(id)
+}
+
+// CreateAdvertisement creates a new advertisement in the database
+func (ac *AdvertisementController) CreateAdvertisement(advertisement *models.Advertisement) error {
+	return ac.AdvertisementModel.CreateAdvertisement(advertisement)
+}
+
+// UpdateAdvertisement updates an existing advertisement in the database
+func (ac *AdvertisementController) UpdateAdvertisement(advertisement *models.Advertisement) error {
+	return ac.AdvertisementModel.UpdateAdvertisement(advertisement)
+}
+
+// DeleteAdvertisement deletes an advertisement from the database
+func (ac *AdvertisementController) DeleteAdvertisement(id uint) error {
+	return ac.AdvertisementModel.DeleteAdvertisement(id)
+}
+
+// HandleWebSocketConnection handles WebSocket connections for remote control
+func (ac *AdvertisementController) HandleWebSocketConnection(c *gin.Context) {
+	conn, err := ac.upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		fmt.Println("WebSocket connection error:", err)
+		return
+	}
+	defer conn.Close()
+
+	for {
+		// Read the message from the WebSocket connection
+		messageType, p, err := conn.ReadMessage()
+		if err != nil {
+			fmt.Println("WebSocket read error:", err)
+			break
+		}
+
+		// Process the received message (replace with your own logic)
+		message := string(p)
+		fmt.Printf("Received message from WebSocket: %s\n", message)
+
+		// Process the message and perform actions based on remote control commands
+		// For example, you can use a specific message format to convey commands
+		// and interpret those commands to control the advertisement playback or other features.
+		// Update the logic below accordingly.
+
+		// Example: If the message is "pause", pause the playback
+		if message == "pause" {
+			// Add your logic to pause the advertisement playback
+			fmt.Println("Advertisement playback paused.")
+		}
+
+		// Example: If the message is "resume", resume the playback
+		if message == "resume" {
+			// Add your logic to resume the advertisement playback
+			fmt.Println("Advertisement playback resumed.")
+		}
+
+		// Example: If the message is "skip", skip to the next advertisement
+		if message == "skip" {
+			// Add your logic to skip to the next advertisement
+			fmt.Println("Skipping to the next advertisement.")
+		}
+
+		// Update the logic based on your requirements
+
+		// Send a response back to the WebSocket client (optional)
+		response := "Command received and processed."
+		err = conn.WriteMessage(messageType, []byte(response))
+		if err != nil {
+			fmt.Println("WebSocket write error:", err)
+			break
+		}
+	}
+}
+
+// processWebSocketCommand processes WebSocket commands
+func (ac *AdvertisementController) processWebSocketCommand(command string) error {
+	// Add your logic to interpret and process WebSocket commands
+	// For example, parse the command and perform actions accordingly
+	switch command {
+	case "pause":
+		// Add logic to pause the advertisement playback
+		fmt.Println("Advertisement playback paused.")
+	case "resume":
+		// Add logic to resume the advertisement playback
+		fmt.Println("Advertisement playback resumed.")
+	case "skip":
+		// Add logic to skip to the next advertisement
+		fmt.Println("Skipping to the next advertisement.")
+	case "volume_up":
+		// Add logic to increase the volume
+		fmt.Println("Volume increased.")
+	case "volume_down":
+		// Add logic to decrease the volume
+		fmt.Println("Volume decreased.")
+	case "mute":
+		// Add logic to mute the audio
+		fmt.Println("Audio muted.")
+	case "unmute":
+		// Add logic to unmute the audio
+		fmt.Println("Audio unmuted.")
+	case "info":
+		// Send information about the current playback state to the WebSocket client
+		ac.sendPlaybackInfoToWebSocket()
+	default:
+		return fmt.Errorf("unknown command: %s", command)
+	}
+
+	return nil
+}
+
+// sendPlaybackInfoToWebSocket sends information about the current playback state to the WebSocket client
+func (ac *AdvertisementController) sendPlaybackInfoToWebSocket() {
+	// Add logic to gather information about the current playback state
+	playbackState, err := ac.getCurrentPlaybackState()
+	if err != nil {
+		fmt.Printf("Error getting current playback state: %v\n", err)
+		return
+	}
+
+	// Convert the playbackState struct to JSON
+	jsonData, err := json.Marshal(playbackState)
+	if err != nil {
+		fmt.Printf("Error converting playbackState to JSON: %v\n", err)
+		return
+	}
+
+	// Send the JSON data to the WebSocket client
+	err = ac.webSocketConn.WriteMessage(websocket.TextMessage, jsonData)
+	if err != nil {
+		fmt.Printf("Error sending playbackState to WebSocket: %v\n", err)
+	}
+}
+
+// getCurrentPlaybackState retrieves the current playback state
+func (ac *AdvertisementController) getCurrentPlaybackState() (*PlaybackState, error) {
+	// Replace the placeholder code with your actual logic to retrieve the current playback state
+
+	// Example: Get the currently playing advertisement
+	currentAdvertisement, err := ac.getCurrentAdvertisement()
+	if err != nil {
+		return nil, err
+	}
+
+	// Example: Get the currently playing playlist
+	currentPlaylist, err := ac.getCurrentPlaylist()
+	if err != nil {
+		return nil, err
+	}
+
+	// Example: Get the elapsed time of the current playback
+	elapsedTime, err := ac.getElapsedTime()
+	if err != nil {
+		return nil, err
+	}
+
+	// Example: Get the next advertisement to play
+	nextAdvertisement, err := ac.getNextAdvertisement()
+	if err != nil {
+		return nil, err
+	}
+
+	// Example: Get additional information such as playback rate, total duration, etc.
+	playbackRate := 1.0                                 // Example value, replace with actual logic
+	totalDuration := time.Hour                          // Example value, replace with actual logic
+	remainingTime := totalDuration - elapsedTime        // Example value, replace with actual logic
+	currentVideo := &models.Video{}                     // Example value, replace with actual logic
+	nextVideo := &models.Video{}                        // Example value, replace with actual logic
+	currentTimestamp := time.Now()                      // Example value, replace with actual logic
+	thumbnailURL := "https://example.com/thumbnail.jpg" // Example value, replace with actual logic
+	playbackHistory := []*models.Video{}                // Example value, replace with actual logic
+
+	// Example playback state struct
+	playbackState := &PlaybackState{
+		Status:               "playing",
+		CurrentAdvertisement: currentAdvertisement,
+		CurrentPlaylist:      currentPlaylist,
+		ElapsedTime:          elapsedTime,
+		NextAdvertisement:    nextAdvertisement,
+		PlaybackRate:         playbackRate,
+		TotalDuration:        totalDuration,
+		RemainingTime:        remainingTime,
+		CurrentVideo:         currentVideo,
+		NextVideo:            nextVideo,
+		CurrentTimestamp:     currentTimestamp,
+		ThumbnailURL:         thumbnailURL,
+		PlaybackHistory:      playbackHistory,
+		// Add more relevant information as needed
+	}
+
+	return playbackState, nil
+}
+
+// PlaybackState represents the current playback state
+// PlaybackState represents the current playback state
+type PlaybackState struct {
+	Status               string                `json:"status"`
+	CurrentAdvertisement *models.Advertisement `json:"current_ad"`
+	CurrentPlaylist      *models.Playlist      `json:"current_playlist"`
+	ElapsedTime          time.Duration         `json:"elapsed_time"`
+	NextAdvertisement    *models.Advertisement `json:"next_ad"`
+
+	// Additional fields for a more detailed playback state
+	PlaybackRate     float64         `json:"playback_rate"`     // Playback speed (e.g., 1.0 for normal speed)
+	TotalDuration    time.Duration   `json:"total_duration"`    // Total duration of the current playlist or content
+	RemainingTime    time.Duration   `json:"remaining_time"`    // Remaining time of the current playlist or content
+	CurrentVideo     *models.Video   `json:"current_video"`     // Details about the current video being played
+	NextVideo        *models.Video   `json:"next_video"`        // Details about the next video to be played
+	CurrentTimestamp time.Time       `json:"current_timestamp"` // Timestamp of the current playback position
+	ThumbnailURL     string          `json:"thumbnail_url"`     // URL of the video thumbnail
+	PlaybackHistory  []*models.Video `json:"playback_history"`  // History of videos played in the current session
+	// Add more relevant information as needed
+}
+
+// getCurrentAdvertisement retrieves the currently playing advertisement from the database or cache
+func (ac *AdvertisementController) getCurrentAdvertisement() (*models.Advertisement, error) {
+	// Replace the placeholder code with your actual logic to get the currently playing advertisement from the database or cache
+	// Use the playlist or session information to determine the current advertisement
+
+	// Example: Retrieve the current advertisement from the database based on playlist ID
+	currentPlaylist, err := ac.getCurrentPlaylist()
+	if err != nil {
+		return nil, err
+	}
+
+	currentAdvertisement, err := ac.AdvertisementModel.GetCurrentAdvertisement(currentPlaylist.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return currentAdvertisement, nil
+}
+
+// getCurrentPlaylist simulates fetching the currently playing playlist
+func (ac *AdvertisementController) getCurrentPlaylist() (*models.Playlist, error) {
+	// Replace with your actual logic to get the currently playing playlist
+	// For example, query the database, fetch from cache, etc.
+	// This is just a simulated example
+
+	// Assume there is a function in PlaylistModel to get the current playlist
+	currentPlaylist, err := ac.getCurrentPlaylist()
+	if err != nil {
+		return nil, err
+	}
+
+	return currentPlaylist, nil
+}
+
+// getNextAdvertisement retrieves the next advertisement to play from the database or cache
+func (ac *AdvertisementController) getNextAdvertisement() (*models.Advertisement, error) {
+	// Replace the placeholder code with your actual logic to get the next advertisement to play from the database or cache
+	// Use session or playlist information to determine the next advertisement
+
+	// Example: Retrieve the next advertisement from the database based on playlist ID
+	currentPlaylist, err := ac.getCurrentPlaylist()
+	if err != nil {
+		return nil, err
+	}
+
+	nextAdvertisement, err := ac.AdvertisementModel.GetNextAdvertisement(currentPlaylist.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	return nextAdvertisement, nil
+}
+
+// getElapsedTime retrieves the elapsed time of the current playback
+func (ac *AdvertisementController) getElapsedTime() (time.Duration, error) {
+	// Replace the placeholder code with your actual logic to get the elapsed time of the current playback
+	// You may use timestamps or any other relevant information to calculate the elapsed time
+
+	// Example: Calculate elapsed time based on start timestamp and current timestamp
+	startTime := time.Now().Add(-time.Minute * 5) // Placeholder start time
+	currentTime := time.Now()                     // Placeholder current time
+
+	elapsedTime := currentTime.Sub(startTime)
+
+	return elapsedTime, nil
 }
