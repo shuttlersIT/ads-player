@@ -16,6 +16,7 @@ import (
 	"github.com/shuttlersit/ads-player/backend/controllers"
 	"github.com/shuttlersit/ads-player/backend/models"
 	"github.com/shuttlersit/ads-player/backend/routes"
+	"github.com/shuttlersit/ads-player/backend/services"
 	"gorm.io/gorm"
 )
 
@@ -23,16 +24,30 @@ var db *gorm.DB
 var err error
 
 func main() {
+
+	bucketURL, region, accessKey, secretKey := "url", "region", "accessKey", "secretKey"
 	// Migrate the schema
-	db.AutoMigrate(&models.Playlist{}, &models.Video{}, &models.Advertisement{}, &models.AdvertisementPlayEvent{})
+	db.AutoMigrate(&models.Playlist{}, &models.Video{}, &models.Advertisement{}, &models.AdvertisementPlayEvent{}, &services.DefaultS3Service{})
 
 	// Create models
 	playlistModel := models.NewPlaylistModel(db)
 	advertisementModel := models.NewAdvertisementDBModel(db)
+	videoModel := models.NewVideoDBModel(db)
+	s3Service := services.NewDefaultS3Service(bucketURL, region, accessKey, secretKey)
+	videoPlayer := services.NewVideoPlayer()
+	logger := services.NewLogger()
+	database := db
+	currentPlaylist := playlistModel.GetCurrentPlaylistID()
+	currentAdvertisement := &models.Advertisement{}
 
+	//playbackService := services.NewPlaybackService(playlistModel, advertisementModel, s3Service, videoPlayer, logger, database, videoModel, currentPlaylist, currentAdvertisement)
+	playbackService := services.NewPlaybackService(playlistModel, advertisementModel, s3Service, videoPlayer, logger, database, videoModel, currentPlaylist, currentAdvertisement)
+	//playlistService := services.NewDefaultPlaylistService()
 	// Create controllers
-	playbackService := &controllers.SimplePlaybackService{} // Use your preferred playback service implementation
-	advertisementController := controllers.NewAdvertisementController(playlistModel, advertisementModel, playbackService)
+	//playbackService2 := &controllers.SimplePlaybackService{} // Use your preferred playback service implementation
+	advertisementController := controllers.NewAdvertisementController(videoModel, playlistModel, advertisementModel, playbackService, s3Service)
+	//playlistController := controllers.NewPlaylistController(db)
+	//remoteControlController := controllers.NewRemoteControlController(playlistService)
 
 	// Start the advertisement scheduler
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())

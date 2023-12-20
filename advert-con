@@ -22,37 +22,19 @@ import (
 	"github.com/shuttlersit/ads-player/backend/services"
 )
 
-// AdvertisementController contains functions related to advertisement scheduling and playback.
+// AdvertisementController handles advertisement scheduling and playback
 type AdvertisementController struct {
 	PlaylistModel      *models.PlaylistDBModel
 	AdvertisementModel *models.AdvertisementDBModel
-	PlaybackService    *services.PlaybackServiceImpl
-	S3Service          services.S3Service
+	PlaybackService    PlaybackService
+	S3Service          services.S3Service // Assume you have an S3Service interface for fetching from AWS S3
 	webSocketConn      *websocket.Conn
 	upgrader           websocket.Upgrader
 	VideoModel         *models.VideoDBModel
 }
 
 // NewAdvertisementController creates a new instance of AdvertisementController
-func NewAdvertisementController(
-	videoModel *models.VideoDBModel,
-	playlistModel *models.PlaylistDBModel,
-	advertisementModel *models.AdvertisementDBModel,
-	playbackService *services.PlaybackServiceImpl, // Update parameter type
-	s3Service services.S3Service, // Include S3Service dependency
-) *AdvertisementController {
-	return &AdvertisementController{
-		PlaylistModel:      playlistModel,
-		AdvertisementModel: advertisementModel,
-		PlaybackService:    playbackService,
-		VideoModel:         videoModel,
-		S3Service:          s3Service, // Include S3Service dependency
-	}
-}
-
-/*
-// NewAdvertisementController creates a new instance of AdvertisementController.
-func NewAdvertisementController(videoModel *models.VideoDBModel, playlistModel *models.PlaylistDBModel, advertisementModel *models.AdvertisementDBModel, playbackService services.PlaybackService) *AdvertisementController {
+func NewAdvertisementController(videoModel *models.VideoDBModel, playlistModel *models.PlaylistDBModel, advertisementModel *models.AdvertisementDBModel, playbackService PlaybackService) *AdvertisementController {
 	return &AdvertisementController{
 		PlaylistModel:      playlistModel,
 		AdvertisementModel: advertisementModel,
@@ -61,7 +43,6 @@ func NewAdvertisementController(videoModel *models.VideoDBModel, playlistModel *
 		//S3Service:          s3Service, // Assume you have an S3Service interface for fetching from AWS S3
 	}
 }
-*/
 
 // ScheduleAdvertisements sets up a cron job to schedule advertisements
 func (ac *AdvertisementController) ScheduleAdvertisements() error {
@@ -272,13 +253,6 @@ func (ac *AdvertisementController) compareAndUpdateAdvertisements(newAdvertiseme
 			ac.AdvertisementModel.CreateAdvertisement(&newAd)
 			fmt.Printf("New advertisement %d inserted.\n", newAd.ID)
 		}
-		// Assuming you have a method in AdvertisementModel to fetch the video ID associated with the advertisement
-		videoID, err := ac.AdvertisementModel.GetVideoIDForAdvertisement(newAd.ID)
-		if err != nil {
-			fmt.Printf("Error fetching video ID for advertisement %d: %v\n", newAd.ID, err)
-			continue
-		}
-		newAd.VideoID = videoID
 	}
 }
 
@@ -691,33 +665,35 @@ func (ac *AdvertisementController) sendPlaybackInfoToWebSocket() {
 	}
 }
 
-// getCurrentPlaybackState retrieves the current playback state.
-func (ac *AdvertisementController) getCurrentPlaybackState() (*models.PlaybackState, error) {
-	// Get the currently playing advertisement
+// getCurrentPlaybackState retrieves the current playback state
+func (ac *AdvertisementController) getCurrentPlaybackState() (*PlaybackState, error) {
+	// Replace the placeholder code with your actual logic to retrieve the current playback state
+
+	// Example: Get the currently playing advertisement
 	currentAdvertisement, err := ac.getCurrentAdvertisement()
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the currently playing playlist
+	// Example: Get the currently playing playlist
 	currentPlaylist, err := ac.getCurrentPlaylist()
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the elapsed time of the current playback
+	// Example: Get the elapsed time of the current playback
 	elapsedTime, err := ac.getElapsedTime()
 	if err != nil {
 		return nil, err
 	}
 
-	// Get the next advertisement to play
+	// Example: Get the next advertisement to play
 	nextAdvertisement, err := ac.getNextAdvertisement()
 	if err != nil {
 		return nil, err
 	}
 
-	// Get additional information such as playback rate, total duration, etc.
+	// Example: Get additional information such as playback rate, total duration, etc.
 	playbackRate, err := ac.getPlaybackRate()
 	if err != nil {
 		return nil, err
@@ -742,7 +718,7 @@ func (ac *AdvertisementController) getCurrentPlaybackState() (*models.PlaybackSt
 
 	currentTimestamp := time.Now()
 
-	thumbnailURL, err := ac.getThumbnailURL(currentVideo.ID)
+	thumbnailURL, err := ac.getThumbnailURL()
 	if err != nil {
 		return nil, err
 	}
@@ -752,8 +728,19 @@ func (ac *AdvertisementController) getCurrentPlaybackState() (*models.PlaybackSt
 		return nil, err
 	}
 
-	// Create a PlaybackState struct with the gathered information
-	playbackState := &models.PlaybackState{
+	/*
+		// Example: Get additional information such as playback rate, total duration, etc.
+		playbackRate := 1.0                                 // Example value, replace with actual logic
+		totalDuration := time.Hour                          // Example value, replace with actual logic
+		remainingTime := totalDuration - elapsedTime        // Example value, replace with actual logic
+		currentVideo := &models.Video{}                     // Example value, replace with actual logic
+		nextVideo := &models.Video{}                        // Example value, replace with actual logic
+		currentTimestamp := time.Now()                      // Example value, replace with actual logic
+		thumbnailURL := "https://example.com/thumbnail.jpg" // Example value, replace with actual logic
+		playbackHistory := []*models.Video{}                // Example value, replace with actual logic
+	*/
+	// Example playback state struct
+	playbackState := &PlaybackState{
 		Status:               "playing",
 		CurrentAdvertisement: currentAdvertisement,
 		CurrentPlaylist:      currentPlaylist,
@@ -773,18 +760,13 @@ func (ac *AdvertisementController) getCurrentPlaybackState() (*models.PlaybackSt
 	return playbackState, nil
 }
 
-// getCurrentPlaylist retrieves the currently playing playlist.
 func (ac *AdvertisementController) getCurrentPlaylist() (*models.Playlist, error) {
-	// Get the ID of the currently playing playlist from the playback service
-	currentPlaylistID := ac.PlaybackService.GetCurrentPlaylistID()
-
-	// Fetch the playlist using the PlaylistModel
-	return ac.PlaylistModel.GetCurrentPlaylist(currentPlaylistID)
+	// Assuming you have a method in PlaylistModel to fetch the currently playing playlist
+	return ac.PlaylistModel.GetCurrentPlaylist(ac.PlaybackService.GetCurrentPlaylistID())
 }
 
-// getElapsedTime retrieves the elapsed time of the current playback.
 func (ac *AdvertisementController) getElapsedTime() (time.Duration, error) {
-	// Get the start time of the current playback from the PlaybackService
+	// Assuming you have a method in PlaybackService to fetch the start time of the current playback
 	startTime, err := ac.PlaybackService.GetStartTime()
 	if err != nil {
 		return 0, err
@@ -792,9 +774,8 @@ func (ac *AdvertisementController) getElapsedTime() (time.Duration, error) {
 	return time.Since(startTime), nil
 }
 
-// getThumbnailURL retrieves the URL of the current video's thumbnail.
 func (ac *AdvertisementController) getThumbnailURL(videoID uint) (string, error) {
-	// Get the Video object using the VideoModel
+	// Assuming you have a method in VideoModel to fetch the thumbnail URL
 	currentVideo, err := ac.VideoModel.GetVideoByID(videoID)
 	if err != nil {
 		return "", err
@@ -802,56 +783,76 @@ func (ac *AdvertisementController) getThumbnailURL(videoID uint) (string, error)
 	return currentVideo.ThumbnailURL, nil
 }
 
-// getPlaybackHistory retrieves the playback history.
 func (ac *AdvertisementController) getPlaybackHistory() ([]*models.Video, error) {
-	// Get the user ID from the PlaybackService
-	//currentPlaylistID := ac.PlaybackService.GetCurrentPlaylistID()
-
-	// Fetch the playback history using the VideoModel
-	return ac.VideoModel.GetPlaybackHistory(ac.PlaybackService.GetCurrentPlaylistID())
+	// Assuming you have a method in VideoModel to fetch the playback history
+	return ac.VideoModel.GetPlaybackHistory(ac.PlaybackService.GetUserID())
 }
 
-// getPlaybackRate retrieves the playback rate.
+// getPlaybackRate retrieves the playback rate
 func (ac *AdvertisementController) getPlaybackRate() (float64, error) {
-	// Get the playback rate from the PlaybackService
+	// Assuming you have a method in PlaybackService to fetch the playback rate
 	return ac.PlaybackService.GetPlaybackRate()
 }
 
-// getTotalDuration retrieves the total duration of the current playlist or content.
-func (ac *AdvertisementController) getTotalDuration() (time.Duration, error) {
-	// Get the ID of the currently playing playlist from the playback service
-	currentPlaylistID := ac.PlaybackService.GetCurrentPlaylistID()
-
-	// Fetch the total duration using the PlaylistModel
-	return ac.PlaylistModel.GetTotalDuration(currentPlaylistID)
+// getThumbnailURL retrieves the URL of the current video's thumbnail
+func (ac *AdvertisementController) getThumbnailURL(videoID uint) (string, error) {
+	// Assuming you have a method in VideoModel to fetch the thumbnail URL
+	currentVideo, err := ac.VideoModel.GetVideoByID(videoID)
+	if err != nil {
+		return "", err
+	}
+	return currentVideo.ThumbnailURL, nil
 }
 
-// getCurrentVideo retrieves information about the currently playing video.
+func (ac *AdvertisementController) getTotalDuration() (time.Duration, error) {
+	// Assuming you have a method in PlaylistModel to fetch the total duration of the current playlist
+	return ac.PlaylistModel.GetTotalDuration(ac.PlaybackService.GetCurrentPlaylistID())
+}
+
 func (ac *AdvertisementController) getCurrentVideo() (*models.Video, error) {
-	// Get the currently playing advertisement
+	// Assuming you have a method in VideoModel to fetch information about the currently playing video
 	currentAdvertisement, err := ac.getCurrentAdvertisement()
 	if err != nil {
 		return nil, err
 	}
-
-	// Fetch the Video object using the VideoModel
 	return ac.VideoModel.GetVideoByID(currentAdvertisement.VideoID)
 }
 
-// getNextVideo retrieves information about the next video to be played.
 func (ac *AdvertisementController) getNextVideo() (*models.Video, error) {
-	// Get the next advertisement to play
+	// Assuming you have a method in VideoModel to fetch information about the next video to play
 	nextAdvertisement, err := ac.getNextAdvertisement()
 	if err != nil {
 		return nil, err
 	}
-
-	// Fetch the Video object using the VideoModel
 	return ac.VideoModel.GetVideoByID(nextAdvertisement.VideoID)
 }
 
-// getCurrentAdvertisement retrieves the currently playing advertisement.
+// PlaybackState represents the current playback state
+type PlaybackState struct {
+	Status               string                `json:"status"`
+	CurrentAdvertisement *models.Advertisement `json:"current_ad"`
+	CurrentPlaylist      *models.Playlist      `json:"current_playlist"`
+	ElapsedTime          time.Duration         `json:"elapsed_time"`
+	NextAdvertisement    *models.Advertisement `json:"next_ad"`
+
+	// Additional fields for a more detailed playback state
+	PlaybackRate     float64         `json:"playback_rate"`     // Playback speed (e.g., 1.0 for normal speed)
+	TotalDuration    time.Duration   `json:"total_duration"`    // Total duration of the current playlist or content
+	RemainingTime    time.Duration   `json:"remaining_time"`    // Remaining time of the current playlist or content
+	CurrentVideo     *models.Video   `json:"current_video"`     // Details about the current video being played
+	NextVideo        *models.Video   `json:"next_video"`        // Details about the next video to be played
+	CurrentTimestamp time.Time       `json:"current_timestamp"` // Timestamp of the current playback position
+	ThumbnailURL     string          `json:"thumbnail_url"`     // URL of the video thumbnail
+	PlaybackHistory  []*models.Video `json:"playback_history"`  // History of videos played in the current session
+	// Add more relevant information as needed
+}
+
+// getCurrentAdvertisement retrieves the currently playing advertisement from the database or cache
 func (ac *AdvertisementController) getCurrentAdvertisement() (*models.Advertisement, error) {
+	// Replace the placeholder code with your actual logic to get the currently playing advertisement from the database or cache
+	// Use the playlist or session information to determine the current advertisement
+
+	// Example: Retrieve the current advertisement from the database based on playlist ID
 	currentPlaylist, err := ac.getCurrentPlaylist()
 	if err != nil {
 		return nil, err
@@ -865,8 +866,26 @@ func (ac *AdvertisementController) getCurrentAdvertisement() (*models.Advertisem
 	return currentAdvertisement, nil
 }
 
-// getNextAdvertisement retrieves the next advertisement to play.
+// getCurrentPlaylist simulates fetching the currently playing playlist
+func (ac *AdvertisementController) getCurrentPlaylist() (*models.Playlist, error) {
+	// Replace with your actual logic to get the currently playing playlist
+	// For example, query the database, fetch from cache, etc.
+	// This is just a simulated example
+
+	// Assume there is a function in PlaylistModel to get the current playlist
+	currentPlaylist, err := ac.getCurrentPlaylist()
+	if err != nil {
+		return nil, err
+	}
+
+	return currentPlaylist, nil
+}
+
+// getNextAdvertisement retrieves the next advertisement to play from the database or cache
 func (ac *AdvertisementController) getNextAdvertisement() (*models.Advertisement, error) {
+	// Replace the placeholder code with your actual logic to get the next advertisement to play from the database or cache
+	// Use session or playlist information to determine the next advertisement
+
 	// Example: Retrieve the next advertisement from the database based on playlist ID
 	currentPlaylist, err := ac.getCurrentPlaylist()
 	if err != nil {
@@ -925,35 +944,4 @@ func runAdvertisementScheduler(ctx context.Context, ac *AdvertisementController)
 	c.Stop()
 
 	return nil
-}
-
-// getCurrentPlaylist simulates fetching the currently playing playlist
-func (ac *AdvertisementController) GetCurrentPlaylist() (*models.Playlist, error) {
-	// Replace with your actual logic to get the currently playing playlist
-	// For example, query the database, fetch from cache, etc.
-	// This is just a simulated example
-	return ac.PlaylistModel.GetCurrentPlaylist(ac.PlaybackService.GetCurrentPlaylistID())
-}
-
-// ... (previous code)
-
-// getCurrentTimestamp returns the current timestamp
-func (ac *AdvertisementController) getCurrentTimestamp() time.Time {
-	return time.Now()
-}
-
-// ... (other methods)
-
-// GetVideoIDForAdvertisement retrieves the video ID for the given advertisement ID
-func (ac *AdvertisementController) GetVideoIDForAdvertisement(advertisementID uint) (uint, error) {
-	// Replace with the actual implementation to get the video ID for the given advertisement ID
-	// For example, query the database, fetch from cache, etc.
-	// This is just a simulated example
-
-	advertisement, err := ac.AdvertisementModel.GetAdvertisementByID(advertisementID)
-	if err != nil {
-		return 0, err
-	}
-
-	return advertisement.VideoID, nil
 }

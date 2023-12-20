@@ -18,7 +18,7 @@ type Advertisement struct {
 	ContentURL            string                 `json:"contentURL"`
 	Title                 string                 `json:"title"`
 	Description           string                 `json:"description"`
-	Duration              int                    `json:"duration"` // Duration in seconds
+	Duration              uint                   `json:"duration"` // Duration in seconds
 	ScheduledAt           time.Time              `json:"scheduledAt"`
 	Played                bool                   `json:"played" gorm:"default:false"`
 	ClickThroughURL       string                 `json:"clickThroughURL"`
@@ -51,6 +51,9 @@ type Advertisement struct {
 	AdvertisementHashtags []AdvertisementHashtag `json:"hashtags" gorm:"foreignKey:AdvertisementID"`
 	StartDate             time.Time              `json:"start_date"`
 	EndDate               time.Time              `json:"end_date"`
+	VideoID               uint                   `json:"video_id" gorm:"not null"`
+	CreatorUserID         uint                   `json:"creator_user_id"`
+	PlayCount             int                    `json:"playCount" gorm:"default:0"`
 }
 
 // AdvertisementAnalytics struct for tracking advertisement analytics
@@ -176,6 +179,9 @@ type AdvertisementModel interface {
 	GetNextAdvertisementForPlaylist(playlistID uint) (*Advertisement, error)
 	MarkAdvertisementAsPlayed(id uint) error
 	UpdateAdvertisementPlayStatus(id uint, played bool) error
+	GetPlaybackRate() (float64, error)
+	GetVideoIDForAdvertisement(id uint) (uint, error)
+	IncrementPlayCount(advertisementID uint)
 }
 
 // GetNextAdvertisementForPlaylist fetches the next advertisement to play for a playlist
@@ -291,4 +297,33 @@ func (am *AdvertisementDBModel) GetCurrentAdvertisement(id uint) (*Advertisement
 		return nil, err
 	}
 	return &ad, nil
+}
+
+func (am *AdvertisementDBModel) GetPlaybackRate() (float64, error) {
+	// Implement logic to fetch playback rate from the database
+	// For example:
+	// var ad Advertisement
+	// am.DB.First(&ad)
+	// return ad.PlaybackRate, nil
+	return 1.0, nil // Placeholder value, replace with actual logic
+}
+
+// GetVideoIDForAdvertisement fetches the video ID associated with the given advertisement ID
+func (m *AdvertisementDBModel) GetVideoIDForAdvertisement(advertisementID uint) (uint, error) {
+	var ad Advertisement
+	if err := m.DB.First(&ad, advertisementID).Error; err != nil {
+		return 0, err
+	}
+	return ad.VideoID, nil
+}
+
+// IncrementPlayCount increments the play count of the advertisement with the given ID
+func (am *AdvertisementDBModel) IncrementPlayCount(advertisementID uint) error {
+	var advertisement Advertisement
+	if err := am.DB.First(&advertisement, advertisementID).Error; err != nil {
+		return err
+	}
+
+	advertisement.PlayCount++
+	return am.DB.Save(&advertisement).Error
 }

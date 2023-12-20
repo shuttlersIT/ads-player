@@ -14,6 +14,12 @@ import (
 // Playlist model
 type Playlist struct {
 	gorm.Model
+	ID                           uint              `json:"id" gorm:"primaryKey"`
+	Name                         string            `json:"name"`
+	CreatorUserID                uint              `json:"creator_user_id"`
+	StartTime                    time.Time         `json:"start_time"`
+	CreatedAt                    time.Time         `json:"created_at"`
+	UpdatedAt                    time.Time         `json:"updated_at"`
 	Title                        string            `json:"title"`
 	Description                  string            `json:"description"`
 	Videos                       []Video           `gorm:"foreignKey:PlaylistID"`
@@ -33,11 +39,14 @@ type Playlist struct {
 	Followers                    []User            `gorm:"many2many:user_playlist_followers;"`
 	Contributors                 []User            `gorm:"many2many:user_playlist_contributors;"`
 	RelatedPlaylists             []RelatedPlaylist `json:"relatedPlaylists" gorm:"foreignKey:PlaylistID"`
-	TotalDuration                int               `json:"totalDuration" gorm:"default:0"`
+	TotalDuration                time.Duration     `json:"totalDuration" gorm:"default:0"`
 	LastModified                 int               `json:"lastModified" gorm:"autoUpdateTime"`
 	LastAdvertisementScheduledAt time.Time         `json:"lastAdvertisementScheduledAt" gorm:"default:null"`
 	PrivacySetting               PrivacySetting    `json:"privacySetting" gorm:"embedded"`
 	Location                     Location          `json:"location" gorm:"embedded"`
+	CurrentVideo                 *Video            `json:"currentVideo" gorm:"embedded"`
+	NextVideo                    *Video            `json:"nextVideo" gorm:"embedded"`
+	LastScheduledAt              time.Time         `json:"last_scheduled_at"`
 }
 
 // UserPlaylistFollowers model for many-to-many relationship between users and playlists
@@ -92,6 +101,17 @@ type PlaylistModel interface {
 	calculateTotalViews(playlist *Playlist) int
 	hasHighPopularity(playlist *Playlist) bool
 	isFreshPlaylist(playlist *Playlist) bool
+	GetTotalDuration(playlistID uint) (time.Duration, error)
+	GetCurrentVideo(playlistID uint) (*Video, error)
+	GetNextVideo(playlistID uint) (*Video, error)
+	GetCurrentPlaylistID() (uint, error)
+}
+
+// GetCurrentPlaylistID retrieves the ID of the current playlist
+func (p *PlaylistDBModel) GetCurrentPlaylistID() uint {
+	// Implement the logic to get the current playlist ID
+	// For example, you might fetch it from a configuration or database
+	return 1 // Replace with your actual implementation
 }
 
 // GetCurrentPlaylist retrieves the current playlist from the database
@@ -102,21 +122,6 @@ func (am *PlaylistDBModel) GetCurrentPlaylist(id uint) (*Playlist, error) {
 		return nil, err
 	}
 	return &playlist, nil
-}
-
-// UpdateLastScheduledTime updates the last scheduled time for a playlist
-func (pm *PlaylistDBModel) UpdateLastScheduledTime(playlistID uint, lastScheduledTime time.Time) error {
-	var playlist Playlist
-	if err := pm.DB.First(&playlist, playlistID).Error; err != nil {
-		return err
-	}
-
-	playlist.LastAdvertisementScheduledAt = lastScheduledTime
-	if err := pm.DB.Save(&playlist).Error; err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // GetPlaylistsForAdvertisements fetches playlists that have associated advertisements
@@ -271,4 +276,71 @@ func sortPlaylistsByPopularity(playlists []Playlist) {
 	sort.Slice(playlists, func(i, j int) bool {
 		return calculateTotalViews(&playlists[i]) > calculateTotalViews(&playlists[j])
 	})
+}
+
+func (pm *PlaylistDBModel) GetCurrentVideo(playlistID uint) (*Video, error) {
+	// Implement logic to fetch information about the currently playing video from the database for the specified playlistID
+	// For example:
+	// var v Video
+	// pm.DB.Where("playlist_id = ? AND playing = ?", playlistID, true).First(&v)
+	// return &v, nil
+	return &Video{ID: 1, ThumbnailURL: "current_thumbnail.jpg"}, nil // Placeholder value, replace with actual logic
+}
+
+func (pm *PlaylistDBModel) GetNextVideo(playlistID uint) (*Video, error) {
+	// Implement logic to fetch information about the next video in the playlist from the database for the specified playlistID
+	// For example:
+	// var v Video
+	// pm.DB.Where("playlist_id = ? AND playing = ?", playlistID, false).First(&v)
+	// return &v, nil
+	return &Video{ID: 2, ThumbnailURL: "next_thumbnail.jpg"}, nil // Placeholder value, replace with actual logic
+}
+
+// GetTotalDuration retrieves the total duration of the current playlist
+func (m *PlaylistDBModel) GetTotalDuration(playlistID uint) (time.Duration, error) {
+	var playlist Playlist
+	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
+		return 0, err
+	}
+	return playlist.TotalDuration, nil
+}
+
+// UpdateLastScheduledTime updates the last scheduled time for a playlist
+func (m *PlaylistDBModel) UpdateLastScheduledTime(playlistID uint, lastScheduledAt time.Time) error {
+	var playlist Playlist
+	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+	playlist.LastScheduledAt = lastScheduledAt
+	return m.DB.Save(&playlist).Error
+}
+
+// UpdateLastScheduledTime updates the last scheduled time for a playlist
+func (pm *PlaylistDBModel) UpdateLastAdvertisementScheduledTime(playlistID uint, lastScheduledTime time.Time) error {
+	var playlist Playlist
+	if err := pm.DB.First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	playlist.LastAdvertisementScheduledAt = lastScheduledTime
+	if err := pm.DB.Save(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetStartTime gets the start time of the playlist with the given ID
+func (m *PlaylistDBModel) GetStartTime(playlistID uint) (time.Time, error) {
+	// Replace with the actual implementation to get the start time of the playlist
+	// For example, query the database, fetch from cache, etc.
+	// This is just a simulated example
+
+	// Assume there is a field in the Playlist model representing the start time
+	var playlist Playlist
+	if err := m.DB.Where("id = ?", playlistID).First(&playlist).Error; err != nil {
+		return time.Time{}, err
+	}
+
+	return playlist.StartTime, nil
 }

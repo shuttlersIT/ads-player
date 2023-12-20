@@ -16,6 +16,7 @@ type DefaultPlaylistService struct {
 
 // NewDefaultPlaylistService creates a new instance of DefaultPlaylistService
 func NewDefaultPlaylistService() *DefaultPlaylistService {
+
 	return &DefaultPlaylistService{}
 }
 
