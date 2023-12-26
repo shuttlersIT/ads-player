@@ -19,11 +19,11 @@ var upgrader = websocket.Upgrader{
 
 // RemoteControlController handles remote control via WebSocket
 type RemoteControlController struct {
-	PlaylistService services.PlaylistService // Add PlaylistService dependency
+	PlaylistService *services.DefaultPlaylistService // Add PlaylistService dependency
 }
 
 // NewRemoteControlController creates a new instance of RemoteControlController
-func NewRemoteControlController(playlistService services.PlaylistService) *RemoteControlController {
+func NewRemoteControlController(playlistService *services.DefaultPlaylistService) *RemoteControlController {
 	return &RemoteControlController{
 		PlaylistService: playlistService,
 	}

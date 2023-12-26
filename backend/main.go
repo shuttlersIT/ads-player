@@ -40,14 +40,14 @@ func main() {
 	currentPlaylist := playlistModel.GetCurrentPlaylistID()
 	currentAdvertisement := &models.Advertisement{}
 
-	//playbackService := services.NewPlaybackService(playlistModel, advertisementModel, s3Service, videoPlayer, logger, database, videoModel, currentPlaylist, currentAdvertisement)
 	playbackService := services.NewPlaybackService(playlistModel, advertisementModel, s3Service, videoPlayer, logger, database, videoModel, currentPlaylist, currentAdvertisement)
-	//playlistService := services.NewDefaultPlaylistService()
+	playlistService := services.NewDefaultPlaylistService(playlistModel)
+
 	// Create controllers
-	//playbackService2 := &controllers.SimplePlaybackService{} // Use your preferred playback service implementation
 	advertisementController := controllers.NewAdvertisementController(videoModel, playlistModel, advertisementModel, playbackService, s3Service)
-	//playlistController := controllers.NewPlaylistController(db)
-	//remoteControlController := controllers.NewRemoteControlController(playlistService)
+	playlistController := controllers.NewPlaylistDBController(db, playlistService)
+	remoteControlController := controllers.NewRemoteControlController(playlistService)
+	// Note: PlaylistController object not needed.
 
 	// Start the advertisement scheduler
 	schedulerCtx, schedulerCancel := context.WithCancel(context.Background())
@@ -65,7 +65,13 @@ func main() {
 	r := gin.Default()
 
 	// Register playlist routes
-	routes.RegisterPlaylistRoutes(r, db)
+	playlistController.RegisterRoutes(r)
+
+	// Register playlist routes
+	routes.RegisterPlaylistRoutes(r, db, playlistController)
+
+	// Register remote control routes
+	routes.RegisterRemoteControlRoutes(r, advertisementController, playlistService)
 
 	// Graceful shutdown
 	gracefulShutdown(r, schedulerCancel, &wg)

@@ -90,6 +90,8 @@ func NewPlaylistModel(db *gorm.DB) *PlaylistDBModel {
 }
 
 type PlaylistModel interface {
+	CreatePlaylist(playlist *Playlist) error
+	GetAllPlaylists() ([]Playlist, error)
 	GetCurrentPlaylist(id uint) (*Playlist, error)
 	UpdateLastScheduledTime(id uint, lastScheduledTime time.Time) error
 	GetPlaylistsForAdvertisements() ([]Playlist, error)
@@ -105,6 +107,44 @@ type PlaylistModel interface {
 	GetCurrentVideo(playlistID uint) (*Video, error)
 	GetNextVideo(playlistID uint) (*Video, error)
 	GetCurrentPlaylistID() (uint, error)
+	UpdateLastAdvertisementScheduledTime(playlistID uint, lastScheduledTime time.Time) error
+	GetStartTime(playlistID uint) (time.Time, error)
+	GetContributors(playlistID uint) ([]User, error)
+	RemoveContributor(playlistID, userID uint) error
+	AddContributor(playlistID, userID uint) error
+	GetPlaylistsByUserID(userID uint) ([]Playlist, error)
+	RemoveFollower(playlistID, userID uint) error
+	AddFollower(playlistID, userID uint) error
+	GetFollowers(playlistID uint) ([]User, error)
+	RemoveAdvertisementFromPlaylist(playlistID, adID uint) error
+	AddAdvertisementToPlaylist(playlistID uint, ad *Advertisement) error
+	RemoveVideoFromPlaylist(playlistID, videoID uint)
+	AddVideoToPlaylist(playlistID uint, video *Video) error
+	UpdatePlaylist(playlist *Playlist) error
+	GetPlaylistByID(playlistID uint) (*Playlist, error)
+	DeletePlaylist(playlistID uint) error
+	UpdatePlaylistDetails(playlistID uint, updatedDetails Playlist) error
+	AddRelatedPlaylist(playlistID, relatedPlaylistID uint) error
+	RemoveRelatedPlaylist(playlistID, relatedPlaylistID uint) error
+}
+
+// GetAllPlaylists retrieves all playlists from the database
+func (m *PlaylistDBModel) GetAllPlaylists() ([]Playlist, error) {
+	var playlists []Playlist
+	if err := m.DB.Preload("Contributors").Find(&playlists).Error; err != nil {
+		return nil, err
+	}
+
+	return playlists, nil
+}
+
+// CreatePlaylist creates a new playlist
+func (m *PlaylistDBModel) CreatePlaylist(playlist *Playlist) error {
+	if err := m.DB.Create(playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetCurrentPlaylistID retrieves the ID of the current playlist
@@ -343,4 +383,298 @@ func (m *PlaylistDBModel) GetStartTime(playlistID uint) (time.Time, error) {
 	}
 
 	return playlist.StartTime, nil
+}
+
+// UpdatePlaylist updates the information of a playlist in the database
+func (m *PlaylistDBModel) UpdatePlaylist(playlist *Playlist) error {
+	return m.DB.Save(playlist).Error
+}
+
+// AddVideoToPlaylist adds a video to a playlist
+func (m *PlaylistDBModel) AddVideoToPlaylist(playlistID uint, video *Video) error {
+	var playlist Playlist
+	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and Video models
+	// Adjust the code accordingly based on your database schema
+	if err := m.DB.Model(&playlist).Association("Videos").Append(video); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveVideoFromPlaylist removes a video from a playlist
+func (m *PlaylistDBModel) RemoveVideoFromPlaylist(playlistID, videoID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("Videos").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and Video models
+	// Adjust the code accordingly based on your database schema
+	for i, video := range playlist.Videos {
+		if video.ID == videoID {
+			playlist.Videos = append(playlist.Videos[:i], playlist.Videos[i+1:]...)
+			break
+		}
+	}
+
+	if err := m.DB.Save(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// AddAdvertisementToPlaylist adds an advertisement to a playlist
+func (m *PlaylistDBModel) AddAdvertisementToPlaylist(playlistID uint, ad *Advertisement) error {
+	var playlist Playlist
+	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and Advertisement models
+	// Adjust the code accordingly based on your database schema
+	if err := m.DB.Model(&playlist).Association("Advertisements").Append(ad); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveAdvertisementFromPlaylist removes an advertisement from a playlist
+func (m *PlaylistDBModel) RemoveAdvertisementFromPlaylist(playlistID, adID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("Advertisements").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and Advertisement models
+	// Adjust the code accordingly based on your database schema
+	for i, ad := range playlist.Advertisements {
+		if ad.ID == adID {
+			playlist.Advertisements = append(playlist.Advertisements[:i], playlist.Advertisements[i+1:]...)
+			break
+		}
+	}
+
+	if err := m.DB.Save(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetFollowers retrieves followers of a playlist
+func (m *PlaylistDBModel) GetFollowers(playlistID uint) ([]User, error) {
+	var playlist Playlist
+	if err := m.DB.Preload("Followers").First(&playlist, playlistID).Error; err != nil {
+		return nil, err
+	}
+
+	// Assuming you have a relationship set up between Playlist and User models for followers
+	// Adjust the code accordingly based on your database schema
+	var followers []User
+	for _, follower := range playlist.Followers {
+		followers = append(followers, User{UserID: follower.ID, Username: "Follower"}) // Replace with actual user details
+	}
+
+	return followers, nil
+}
+
+// AddFollower adds a user as a follower to a playlist
+func (m *PlaylistDBModel) AddFollower(playlistID, userID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("Followers").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and User models for followers
+	// Adjust the code accordingly based on your database schema
+	if err := m.DB.Model(&playlist).Association("Followers").Append(&UserPlaylistFollowers{UserID: userID}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveFollower removes a follower from a playlist
+func (m *PlaylistDBModel) RemoveFollower(playlistID, userID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("Followers").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and User models for followers
+	// Adjust the code accordingly based on your database schema
+	for i, follower := range playlist.Followers {
+		if follower.UserID == userID {
+			playlist.Followers = append(playlist.Followers[:i], playlist.Followers[i+1:]...)
+			break
+		}
+	}
+
+	if err := m.DB.Save(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetPlaylistsByUserID retrieves playlists created by a specific user
+func (m *PlaylistDBModel) GetPlaylistsByUserID(userID uint) ([]Playlist, error) {
+	var playlists []Playlist
+	if err := m.DB.Preload("Videos").Preload("Advertisements").Where("creator_user_id = ?", userID).Find(&playlists).Error; err != nil {
+		return nil, err
+	}
+	return playlists, nil
+}
+
+// AddContributor adds a user as a contributor to a playlist
+func (m *PlaylistDBModel) AddContributor(playlistID, userID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("Contributors").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and User models for contributors
+	// Adjust the code accordingly based on your database schema
+	if err := m.DB.Model(&playlist).Association("Contributors").Append(&UserPlaylistContributors{UserID: userID}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveContributor removes a contributor from a playlist
+func (m *PlaylistDBModel) RemoveContributor(playlistID, userID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("Contributors").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and User models for contributors
+	// Adjust the code accordingly based on your database schema
+	for i, contributor := range playlist.Contributors {
+		if contributor.UserID == userID {
+			playlist.Contributors = append(playlist.Contributors[:i], playlist.Contributors[i+1:]...)
+			break
+		}
+	}
+
+	if err := m.DB.Save(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetContributors retrieves contributors of a playlist
+func (m *PlaylistDBModel) GetContributors(playlistID uint) ([]User, error) {
+	var playlist Playlist
+	if err := m.DB.Preload("Contributors").First(&playlist, playlistID).Error; err != nil {
+		return nil, err
+	}
+
+	// Assuming you have a relationship set up between Playlist and User models for contributors
+	// Adjust the code accordingly based on your database schema
+	var contributors []User
+	for _, contributor := range playlist.Contributors {
+		contributors = append(contributors, User{UserID: contributor.UserID, Username: "Contributor"}) // Replace with actual user details
+	}
+
+	return contributors, nil
+}
+
+// AddRelatedPlaylist adds a related playlist to the current playlist
+func (m *PlaylistDBModel) AddRelatedPlaylist(playlistID, relatedPlaylistID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("RelatedPlaylists").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and RelatedPlaylist models
+	// Adjust the code accordingly based on your database schema
+	if err := m.DB.Model(&playlist).Association("RelatedPlaylists").Append(&RelatedPlaylist{RelatedPlaylistID: relatedPlaylistID}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveRelatedPlaylist removes a related playlist from the current playlist
+func (m *PlaylistDBModel) RemoveRelatedPlaylist(playlistID, relatedPlaylistID uint) error {
+	var playlist Playlist
+	if err := m.DB.Preload("RelatedPlaylists").First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have a relationship set up between Playlist and RelatedPlaylist models
+	// Adjust the code accordingly based on your database schema
+	for i, relatedPlaylist := range playlist.RelatedPlaylists {
+		if relatedPlaylist.RelatedPlaylistID == relatedPlaylistID {
+			playlist.RelatedPlaylists = append(playlist.RelatedPlaylists[:i], playlist.RelatedPlaylists[i+1:]...)
+			break
+		}
+	}
+
+	if err := m.DB.Save(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// UpdatePlaylistDetails updates the details of a playlist
+func (m *PlaylistDBModel) UpdatePlaylistDetails(playlistID uint, updatedDetails Playlist) error {
+	var playlist Playlist
+	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Update playlist details
+	playlist.Name = updatedDetails.Name
+	playlist.Description = updatedDetails.Description
+	playlist.Title = updatedDetails.Title
+	playlist.Tags = updatedDetails.Tags
+	playlist.IsPublic = updatedDetails.IsPublic
+	playlist.FeaturedArtwork = updatedDetails.FeaturedArtwork
+	playlist.IsPlayable = updatedDetails.IsPlayable
+	playlist.PrivacySetting = updatedDetails.PrivacySetting
+
+	// Save the updated playlist
+	if err := m.DB.Save(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// DeletePlaylist deletes a playlist and its associated records
+func (m *PlaylistDBModel) DeletePlaylist(playlistID uint) error {
+	var playlist Playlist
+	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
+		return err
+	}
+
+	// Assuming you have cascading delete set up for related records (e.g., Videos, Advertisements)
+	// Adjust the code accordingly based on your database schema
+	if err := m.DB.Delete(&playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetPlaylistByID retrieves a playlist by ID
+func (m *PlaylistDBModel) GetPlaylistByID(playlistID uint) (*Playlist, error) {
+	var playlist Playlist
+	if err := m.DB.Preload("Videos").Preload("Advertisements").First(&playlist, playlistID).Error; err != nil {
+		return nil, err
+	}
+
+	return &playlist, nil
 }

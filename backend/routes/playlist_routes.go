@@ -12,8 +12,7 @@ import (
 )
 
 // RegisterPlaylistRoutes registers routes related to playlists
-func RegisterPlaylistRoutes(r *gin.Engine, db *gorm.DB) {
-	playlistController := controllers.NewPlaylistController(db)
+func RegisterPlaylistRoutes(r *gin.Engine, db *gorm.DB, playlistController *controllers.PlaylistDBController) {
 
 	playlists := r.Group("/playlists")
 	{

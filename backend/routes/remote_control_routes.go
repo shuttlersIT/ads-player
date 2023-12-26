@@ -12,8 +12,7 @@ import (
 )
 
 // RegisterRemoteControlRoutes registers remote control routes
-func RegisterRemoteControlRoutes(router *gin.Engine, advertisementController *controllers.AdvertisementController) {
-	playlistService := services.NewDefaultPlaylistService() // Initialize the PlaylistService
+func RegisterRemoteControlRoutes(router *gin.Engine, advertisementController *controllers.AdvertisementController, playlistService *services.DefaultPlaylistService) {
 
 	// WebSocket route
 	webSocketController := controllers.NewRemoteControlController(playlistService)
