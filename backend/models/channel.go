@@ -11,7 +11,8 @@ import (
 // Channel model
 type Channel struct {
 	gorm.Model
-	Name               string             `json:"name"`
+	ID                 uint               `gorm:"primaryKey" json:"id"`
+	Name               string             `gorm:"not null" json:"name"`
 	Description        string             `json:"description"`
 	OwnerID            uint               `json:"-"`
 	Owner              User               `json:"owner"`
@@ -34,6 +35,11 @@ type Channel struct {
 	MonetarySupportURL string             `json:"monetarySupportURL"`
 }
 
+// TableName sets the table name for the Playlist model.
+func (Channel) TableName() string {
+	return "playlists"
+}
+
 // SocialMediaLinks model
 type SocialMediaLinks struct {
 	Facebook  string `json:"facebook"`
@@ -41,6 +47,11 @@ type SocialMediaLinks struct {
 	Instagram string `json:"instagram"`
 	YouTube   string `json:"youtube"`
 	// Add more social media links as needed
+}
+
+// TableName sets the table name for the Playlist model.
+func (SocialMediaLinks) TableName() string {
+	return "playlists"
 }
 
 // ContactInformation model
@@ -51,10 +62,67 @@ type ContactInformation struct {
 	// Add more contact information fields as needed
 }
 
+// TableName sets the table name for the Playlist model.
+func (ContactInformation) TableName() string {
+	return "playlists"
+}
+
 // Category model
 type Category struct {
 	gorm.Model
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Channels    []Channel `gorm:"many2many:channel_categories;"`
+}
+
+// TableName sets the table name for the Playlist model.
+func (Category) TableName() string {
+	return "playlists"
+}
+
+// ChannelDBModel provides methods for database operations related to Channel.
+type ChannelDBModel struct {
+	DB *gorm.DB
+}
+
+// NewChannelDBModel creates a new instance of ChannelDBModel.
+func NewChannelDBModel(db *gorm.DB) *ChannelDBModel {
+	return &ChannelDBModel{DB: db}
+}
+
+// CreateChannel creates a new channel in the database.
+func (m *ChannelDBModel) CreateChannel(channel *Channel) error {
+	return m.DB.Create(channel).Error
+}
+
+// GetChannelByID retrieves a channel by its ID from the database.
+func (m *ChannelDBModel) GetChannelByID(channelID uint) (*Channel, error) {
+	var channel Channel
+	err := m.DB.First(&channel, channelID).Error
+	return &channel, err
+}
+
+// GetChannels retrieves all channels from the database.
+func (m *ChannelDBModel) GetChannels() ([]Channel, error) {
+	var channels []Channel
+	err := m.DB.Find(&channels).Error
+	return channels, err
+}
+
+// UpdateChannel updates the information of a channel in the database.
+func (m *ChannelDBModel) UpdateChannel(channelID uint, updatedChannel *Channel) error {
+	var channel Channel
+	err := m.DB.First(&channel, channelID).Error
+	if err != nil {
+		return err
+	}
+
+	channel.Name = updatedChannel.Name
+
+	return m.DB.Save(&channel).Error
+}
+
+// DeleteChannel deletes a channel from the database.
+func (m *ChannelDBModel) DeleteChannel(channelID uint) error {
+	return m.DB.Delete(&Channel{}, channelID).Error
 }

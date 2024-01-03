@@ -25,28 +25,30 @@ var err error
 
 func main() {
 
+	s3BaseURL := models.S3BaseURL
 	bucketURL, region, accessKey, secretKey := "url", "region", "accessKey", "secretKey"
 	// Migrate the schema
 	db.AutoMigrate(&models.Playlist{}, &models.Video{}, &models.Advertisement{}, &models.AdvertisementPlayEvent{}, &services.DefaultS3Service{})
 
 	// Create models
-	playlistModel := models.NewPlaylistModel(db)
-	advertisementModel := models.NewAdvertisementDBModel(db)
-	videoModel := models.NewVideoDBModel(db)
-	s3Service := services.NewDefaultS3Service(bucketURL, region, accessKey, secretKey)
-	videoPlayer := services.NewVideoPlayer()
 	logger := services.NewLogger()
+	advertisementModel := models.NewAdvertisementDBModel(db)
+	videoDBModel := models.NewVideoDBModel(db, s3BaseURL)
+	s3Service := services.NewDefaultS3Service(bucketURL, region, accessKey, secretKey)
+	videoPlayer := services.NewRTSPVideoPlayer(s3Service) // Initialize the video player
+	playlistModel := models.NewPlaylistModel(db, videoDBModel)
+	videoService := services.NewVideoService(videoDBModel, videoPlayer)
 	database := db
 	currentPlaylist := playlistModel.GetCurrentPlaylistID()
 	currentAdvertisement := &models.Advertisement{}
 
-	playbackService := services.NewPlaybackService(playlistModel, advertisementModel, s3Service, videoPlayer, logger, database, videoModel, currentPlaylist, currentAdvertisement)
-	playlistService := services.NewDefaultPlaylistService(playlistModel)
+	playlistService := services.NewDefaultPlaylistService(playlistModel, videoDBModel, advertisementModel, videoService, currentPlaylist)
+	playbackService := services.NewPlaybackService(playlistModel, advertisementModel, s3Service, videoService, playlistService, logger, database, videoDBModel, currentPlaylist, currentAdvertisement)
 
 	// Create controllers
-	advertisementController := controllers.NewAdvertisementController(videoModel, playlistModel, advertisementModel, playbackService, s3Service)
+	advertisementController := controllers.NewAdvertisementController(videoDBModel, playlistModel, advertisementModel, playbackService, s3Service)
 	playlistController := controllers.NewPlaylistDBController(db, playlistService)
-	remoteControlController := controllers.NewRemoteControlController(playlistService)
+	remoteControlController := controllers.NewRemoteControlController(playlistService, playbackService, playlistModel)
 	// Note: PlaylistController object not needed.
 
 	// Start the advertisement scheduler
@@ -68,10 +70,16 @@ func main() {
 	playlistController.RegisterRoutes(r)
 
 	// Register playlist routes
-	routes.RegisterPlaylistRoutes(r, db, playlistController)
+	routes.RegisterPlaylistRoutes(r, db, playlistController, remoteControlController)
 
 	// Register remote control routes
-	routes.RegisterRemoteControlRoutes(r, advertisementController, playlistService)
+	routes.RegisterRemoteControlRoutes(r, advertisementController, playlistService, playbackService)
+
+	// Set up routes
+	routes.SetVideoRoutes(r, videoService)
+
+	// Register video streaming route
+	routes.GET("/video/:key", videoPlayer.StreamVideoHandler)
 
 	// Graceful shutdown
 	gracefulShutdown(r, schedulerCancel, &wg)
@@ -80,6 +88,8 @@ func main() {
 	if err := r.Run(":8080"); err != nil {
 		log.Fatal("Error running the server: ", err)
 	}
+
+	//r.Run(":" + config.PORT)
 }
 
 func runAdvertisementScheduler(ctx context.Context, advertisementController *controllers.AdvertisementController) error {

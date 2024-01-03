@@ -12,7 +12,7 @@ import (
 )
 
 // RegisterPlaylistRoutes registers routes related to playlists
-func RegisterPlaylistRoutes(r *gin.Engine, db *gorm.DB, playlistController *controllers.PlaylistDBController) {
+func RegisterPlaylistRoutes(r *gin.Engine, db *gorm.DB, playlistController *controllers.PlaylistDBController, remoteControlController *controllers.RemoteControlController) {
 
 	playlists := r.Group("/playlists")
 	{
@@ -22,4 +22,12 @@ func RegisterPlaylistRoutes(r *gin.Engine, db *gorm.DB, playlistController *cont
 		playlists.PUT("/:id", playlistController.UpdatePlaylist)
 		playlists.DELETE("/:id", playlistController.DeletePlaylist)
 	}
+
+	// Register remote control routes
+	remoteControl := r.Group("/remote")
+	{
+		remoteControl.GET("/control", remoteControlController.APIControlHandler)
+		remoteControl.GET("/ws", remoteControlController.WebSocketHandler)
+	}
+
 }

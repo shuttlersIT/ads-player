@@ -12,14 +12,14 @@ import (
 )
 
 // RegisterRemoteControlRoutes registers remote control routes
-func RegisterRemoteControlRoutes(router *gin.Engine, advertisementController *controllers.AdvertisementController, playlistService *services.DefaultPlaylistService) {
+func RegisterRemoteControlRoutes(router *gin.Engine, advertisementController *controllers.AdvertisementController, playlistService *services.DefaultPlaylistService, playbackService *services.PlaybackService) {
 
 	// WebSocket route
-	webSocketController := controllers.NewRemoteControlController(playlistService)
+	webSocketController := controllers.NewRemoteControlController(playlistService, playbackService)
 	router.GET("/ws", webSocketController.WebSocketHandler)
 
 	// API route for remote control
-	apiController := controllers.NewRemoteControlController(playlistService)
+	apiController := controllers.NewRemoteControlController(playlistService, playbackService)
 	router.GET("/api/control", apiController.APIControlHandler)
 
 	// Register WebSocket endpoint

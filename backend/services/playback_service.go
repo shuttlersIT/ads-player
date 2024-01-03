@@ -1,10 +1,11 @@
+// backend/services/playback_service.go
+
 package services
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"time"
 
@@ -15,6 +16,14 @@ import (
 
 // PlaybackService provides methods for managing playback
 type PlaybackService interface {
+	Initialize() error
+	PlayUrl(videoURL string) error
+	Play(video *models.Video) error
+	PlayAdvert(advertisement *models.Advertisement) error
+	Stop() error
+	Pause() error
+	Resume() error
+	AdjustVolume(volume int) error
 	GetCurrentPlaylistID() uint
 	GetStartTime() (time.Time, error)
 	GetPlaybackRate() (float64, error)
@@ -26,6 +35,12 @@ type PlaybackService interface {
 	SetPlaybackRate(rate float64) error
 	PlayNextAdvertisement(playlistID uint) error
 	UpdatePlaybackStatus(advertisementID uint) error
+	GetCurrentVideo() *models.Video
+	GetNextVideo() (*models.Video, error)
+	SkipToPosition(position int) error
+	GetStatus() string
+	GetNextVideoFromCurrent() (*models.Video, error)
+	SetCurrentVideoURL(videoURL string) string
 }
 
 // PlaybackServiceImpl is the implementation of PlaybackService
@@ -36,12 +51,16 @@ type PlaybackServiceImpl struct {
 	PlaylistModel        *models.PlaylistDBModel
 	AdvertisementModel   *models.AdvertisementDBModel
 	S3Service            S3Service
-	VideoPlayer          VideoPlayer
+	VideoServer          VideoPlayerService
+	VideoService         VideoService
+	PlaylistService      PlaylistService
 	Logger               Logger
 	Database             *gorm.DB
 	Video                *models.VideoDBModel
 	CurrentPlaylistID    uint // Add a field to store the current playlist ID
 	CurrentAdvertisement *models.Advertisement
+	CurrentVideoURL      string // Add this line
+	PlayingVideo         *models.PlayingVideo
 	// Add more fields as needed
 }
 
@@ -50,12 +69,15 @@ func NewPlaybackService(
 	playlist *models.PlaylistDBModel,
 	advertisementModel *models.AdvertisementDBModel,
 	s3Service S3Service,
-	videoPlayer VideoPlayer,
+	videoServer VideoPlayerService, videoService VideoService,
+	playlistService PlaylistService,
 	logger Logger,
 	database *gorm.DB,
 	video *models.VideoDBModel,
 	currentPlaylistID uint, // Add a field to store the current playlist ID
 	currentAdvertisement *models.Advertisement,
+	CurrentVideoURL string,
+	playingVideo *models.PlayingVideo,
 ) *PlaybackServiceImpl {
 	// Perform any setup or initialization
 	return &PlaybackServiceImpl{
@@ -64,18 +86,22 @@ func NewPlaybackService(
 		PlaylistModel:        playlist,
 		AdvertisementModel:   advertisementModel,
 		S3Service:            s3Service,
-		VideoPlayer:          videoPlayer,
+		VideoServer:          videoServer,
+		VideoService:         videoService,
+		PlaylistService:      playlistService,
 		Logger:               logger,
 		Database:             database,
 		Video:                video,
 		CurrentPlaylistID:    currentPlaylistID,
 		CurrentAdvertisement: currentAdvertisement,
+		CurrentVideoURL:      CurrentVideoURL,
+		PlayingVideo:         playingVideo,
 		// Initialize other fields as needed
 	}
 }
 
 // Play implements the Play method of the PlaybackService interface
-func (ps *PlaybackServiceImpl) Play(advertisement *models.Advertisement) error {
+func (ps *PlaybackServiceImpl) PlayAdvert(advertisement *models.Advertisement) error {
 	// Implement the logic to play the advertisement
 	fmt.Printf("Playing advertisement %d...\n", advertisement.ID)
 	// Simulate fetching video information from the database
@@ -93,7 +119,7 @@ func (ps *PlaybackServiceImpl) Play(advertisement *models.Advertisement) error {
 	}
 
 	// Simulate playing the video using a video player
-	err = ps.VideoPlayer.PlayVideo(videoContent)
+	err = ps.VideoServer.PlayVideo(videoContent)
 	if err != nil {
 		fmt.Printf("Error playing video: %v\n", err)
 		return err
@@ -152,7 +178,7 @@ func (ps *PlaybackServiceImpl) SimulatePlayback(advertisement *models.Advertisem
 	}
 
 	// Example: Connect to a video player and play the video
-	err = ps.VideoPlayer.PlayVideo(videoContent)
+	err = ps.VideoServer.PlayVideo(videoContent)
 	if err != nil {
 		return err
 	}
@@ -189,49 +215,6 @@ type Database interface {
 	// Define methods related to the database connection
 	GetVideoByID(videoID uint) (*models.Video, error)
 }
-
-// Placeholder for VideoPlayer
-type VideoPlayer interface {
-	// Define methods related to interacting with the video player
-	PlayVideoURL(url string) error
-	PlayVideo(content []byte) error
-	Play(videoReader io.Reader) error
-}
-
-// VideoPlayerImpl is an implementation of VideoPlayer
-type VideoPlayerImpl struct{}
-
-// NewVideoPlayer creates a new instance of VideoPlayerImpl
-func NewVideoPlayer() *VideoPlayerImpl {
-	// Perform any setup or initialization
-	return &VideoPlayerImpl{}
-}
-
-// Play plays the video from an io.Reader
-func (vp *VideoPlayerImpl) Play(videoReader io.Reader) error {
-	// Implement the logic to play the video from videoReader
-	return nil
-}
-
-// PlayVideo plays video content from a byte slice
-func (vp *VideoPlayerImpl) PlayVideo(content []byte) error {
-	// Implement the logic to play video from a byte slice
-	fmt.Println("Playing video from byte slice...")
-	return nil
-}
-
-// PlayVideoURL plays the video from a given URL
-func (vp *VideoPlayerImpl) PlayVideoURL(url string) error {
-	// Implement the logic to play the video from the provided URL
-	return nil
-}
-
-// Play plays video content from an io.Reader
-//func (vp *VideoPlayerImpl) Play(videoReader io.Reader) error {
-// Implement the logic to play video from an io.Reader
-//	fmt.Println("Playing video from io.Reader...")
-//	return nil
-//}
 
 // fetchVideoURL fetches the video URL from S3
 func (ps *PlaybackServiceImpl) fetchVideoURL(videoID uint) (string, error) {
@@ -280,7 +263,7 @@ func (ps *PlaybackServiceImpl) NextAdvertisement(playlistID uint) error {
 	}
 
 	// Simulate playing the next advertisement
-	err = ps.Play(nextAd)
+	err = ps.PlayAdvert(nextAd)
 	if err != nil {
 		fmt.Printf("Error playing the next advertisement: %v\n", err)
 		return err
@@ -302,7 +285,7 @@ func (ps *PlaybackServiceImpl) PlayNextAdvertisement2(playlistID uint) error {
 	}
 
 	// Simulate playing the next advertisement
-	err = ps.Play(nextAd)
+	err = ps.PlayAdvert(nextAd)
 	if err != nil {
 		fmt.Printf("Error playing the next advertisement: %v\n", err)
 		return err
@@ -354,7 +337,7 @@ func (ps *PlaybackServiceImpl) PlayAdvertisement2(advertisement *models.Advertis
 	}
 
 	// Simulate playing the video using the video player
-	err = ps.VideoPlayer.PlayVideoURL(videoURL)
+	err = ps.VideoServer.PlayVideoURL(videoURL)
 	if err != nil {
 		ps.Logger.Printf("Error playing video: %v\n", err)
 		return err
@@ -393,7 +376,7 @@ func (ps *PlaybackServiceImpl) PlayAdvertisement(advertisement *models.Advertise
 	videoReader := bytes.NewReader(videoContent)
 
 	// Play the video using the VideoPlayer
-	err = ps.VideoPlayer.Play(videoReader)
+	err = ps.VideoServer.Play(videoReader)
 	if err != nil {
 		log.Printf("Error playing video: %v\n", err)
 		return err
@@ -424,7 +407,7 @@ func (ps *PlaybackServiceImpl) PlayAdvertisement3(advertisement *models.Advertis
 	videoReader := bytes.NewReader(videoContent)
 
 	// Play the video using the VideoPlayer
-	err = ps.VideoPlayer.Play(videoReader)
+	err = ps.VideoServer.Play(videoReader)
 	if err != nil {
 		log.Printf("Error playing video: %v\n", err)
 		return err
@@ -486,6 +469,38 @@ func (ps *PlaybackServiceImpl) GetVideoURLDirect(videoID uint) (string, error) {
 	return ps.S3Service.GetVideoURL(fmt.Sprintf("videos/%d.mp4", videoID))
 }
 
+// Initialize initializes the playback service.
+func (p *PlaybackServiceImpl) Initialize() error {
+	// Add logic to initialize the playback service
+	// You may initialize other components and resources here
+	return nil
+}
+
+func (p *PlaybackServiceImpl) PlayUrl(videoURL string) error {
+	// Add logic to handle playback using the playlist and video player services
+	// For example:
+	// 1. Set the current video in the playlist
+	// 2. Call the Play method of the video player service
+	url := p.VideoService.SetCurrentVideoURL(videoURL)
+	return p.VideoServer.PlayVideoURL(url)
+}
+
+// Pause pauses the current playback.
+func (p *PlaybackServiceImpl) Pause() error {
+	// Add logic to pause playback
+	// For example:
+	// 1. Call the Pause method of the video player service
+	return p.VideoServer.Pause()
+}
+
+// Stop stops playback and releases resources.
+func (p *PlaybackServiceImpl) Stop() error {
+	// Add logic to stop playback and release resources
+	// For example:
+	// 1. Call the Stop method of the video player service
+	return p.VideoServer.Stop()
+}
+
 // Logger is an interface for logging messages
 type Logger interface {
 	Printf(format string, v ...interface{})
@@ -494,7 +509,7 @@ type Logger interface {
 // PrintLogger is an implementation of the Logger interface using fmt.Printf
 type PrintLogger struct{}
 
-// NewVideoPlayer creates a new instance of VideoPlayerImpl
+// NewLogger creates a new instance of Logger
 func NewLogger() *PrintLogger {
 	// Perform any setup or initialization
 	return &PrintLogger{}
@@ -503,4 +518,67 @@ func NewLogger() *PrintLogger {
 // Printf implements the Printf method of the Logger interface
 func (pl *PrintLogger) Printf(format string, v ...interface{}) {
 	fmt.Printf(format, v...)
+}
+
+// GetNextVideo retrieves the next video in the playlist
+func (p *PlaybackServiceImpl) GetNextVideo() (*models.Video, error) {
+	// Implement the logic to get the next video in the playlist
+	// You may need to access the playlist or database to determine the next video
+	// Replace the following line with your actual implementation
+	return &models.Video{ID: 2, Title: "Next Video", PlaylistID: *p.PlayingVideo.PlaylistID}, nil
+}
+
+// SkipToPosition skips to a specific position in the playlist
+func (p *PlaybackServiceImpl) SkipToPosition(position int) error {
+	// Implement the logic to skip to a specific position in the playlist
+	// You may need to access the playlist or database to determine the video at the specified position
+	// Replace the following line with your actual implementation
+	return errors.New("not implemented")
+}
+
+// Play implements the Play method of the PlaybackService interface
+func (ps *PlaybackServiceImpl) Play2(video *models.Video) error {
+	// Implement the logic to play a video
+	// Set the playingVideo field to the provided video
+	ps.PlayingVideo = models.NewPlayingVideoModel(video, 1.0, uint(video.PlaylistID))
+	// Simulate playback logic (replace with your actual implementation)
+	fmt.Printf("Simulating playback of video %d\n", video.ID)
+	// Assuming you might want to simulate a playback duration
+	playbackDuration := time.Duration(video.Duration) * time.Second
+	time.Sleep(playbackDuration)
+	return nil
+}
+
+// GetCurrentVideo retrieves the currently playing video
+func (p *PlaybackServiceImpl) GetCurrentVideo() *models.Video {
+	if p.PlayingVideo != nil {
+		return p.PlayingVideo.Video
+	}
+	return nil
+}
+
+// ...
+
+// GetNextVideo retrieves the next video in the playlist
+func (p *PlaybackServiceImpl) GetNextVideoFromCurrent() (*models.Video, error) {
+	// Implement the logic to get the next video in the playlist
+	// You may need to access the playlist or database to determine the next video
+	// Replace the following line with your actual implementation
+	return &models.Video{ID: 2, Title: "Next Video", PlaylistID: p.GetCurrentVideo().PlaylistID}, nil
+}
+
+// SetCurrentVideoURL sets the current video URL in the playback service
+func (ps *PlaybackServiceImpl) SetCurrentVideoURL(videoURL string) string {
+	// Implement the logic to set the current video URL in the playback service
+	// You may need to update the playback service or perform additional actions
+	// Return the URL that will be used for playback
+
+	// Simulate setting the current video URL
+	fmt.Printf("Setting current video URL in playback service: %s\n", videoURL)
+
+	// Update the current video URL
+	ps.CurrentVideoURL = videoURL
+
+	// Return the URL
+	return videoURL
 }

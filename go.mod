@@ -3,7 +3,7 @@ module github.com/shuttlersit/ads-player
 go 1.21.0
 
 require (
-	github.com/aws/aws-sdk-go v1.49.3
+	github.com/aws/aws-sdk-go v1.49.11
 	github.com/gin-gonic/contrib v0.0.0-20221130124618-7e01895a63f2
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-sql-driver/mysql v1.7.1

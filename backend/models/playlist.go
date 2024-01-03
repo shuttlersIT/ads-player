@@ -4,7 +4,9 @@ package models
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"math/rand"
 	"sort"
 	"time"
 
@@ -18,11 +20,12 @@ type Playlist struct {
 	Name                         string            `json:"name"`
 	CreatorUserID                uint              `json:"creator_user_id"`
 	StartTime                    time.Time         `json:"start_time"`
-	CreatedAt                    time.Time         `json:"created_at"`
+	CreatedAt                    time.Time         `gorm:"autoCreateTime" json:"creation_date"`
 	UpdatedAt                    time.Time         `json:"updated_at"`
+	DeletedAt                    time.Time         `gorm:"index" json:"-"`
 	Title                        string            `json:"title"`
 	Description                  string            `json:"description"`
-	Videos                       []Video           `gorm:"foreignKey:PlaylistID"`
+	Videos                       []Video           `gorm:"many2many:playlist_videos;" json:"videos"`
 	ChannelID                    uint              `json:"-"`
 	Channel                      Channel           `json:"channel"`
 	IsFeatured                   bool              `json:"isFeatured" gorm:"default:false"`
@@ -35,7 +38,7 @@ type Playlist struct {
 	DislikeCount                 uint              `json:"dislikeCount" gorm:"default:0"`
 	Comments                     []Comment         `gorm:"foreignKey:PlaylistID"`
 	ShareCount                   uint              `json:"shareCount" gorm:"default:0"`
-	Advertisements               []Advertisement   `json:"advertisements" gorm:"foreignKey:PlaylistID"`
+	Advertisements               []Advertisement   `gorm:"many2many:playlist_advertisements;" json:"advertisements"`
 	Followers                    []User            `gorm:"many2many:user_playlist_followers;"`
 	Contributors                 []User            `gorm:"many2many:user_playlist_contributors;"`
 	RelatedPlaylists             []RelatedPlaylist `json:"relatedPlaylists" gorm:"foreignKey:PlaylistID"`
@@ -47,6 +50,13 @@ type Playlist struct {
 	CurrentVideo                 *Video            `json:"currentVideo" gorm:"embedded"`
 	NextVideo                    *Video            `json:"nextVideo" gorm:"embedded"`
 	LastScheduledAt              time.Time         `json:"last_scheduled_at"`
+	IsPlaying                    bool              `json:"isPlaying" gorm:"default:false"`
+	Order                        int               `json:"order" gorm:"default:0"`
+}
+
+// TableName sets the table name for the Playlist model.
+func (Playlist) TableName() string {
+	return "playlists"
 }
 
 // UserPlaylistFollowers model for many-to-many relationship between users and playlists
@@ -56,11 +66,21 @@ type UserPlaylistFollowers struct {
 	PlaylistID uint
 }
 
+// TableName sets the table name for the Playlist model.
+func (UserPlaylistFollowers) TableName() string {
+	return "UserPlaylistsFollowers"
+}
+
 // UserPlaylistContributors model for many-to-many relationship between users and playlists
 type UserPlaylistContributors struct {
 	gorm.Model
 	UserID     uint
 	PlaylistID uint
+}
+
+// TableName sets the table name for the Playlist model.
+func (UserPlaylistContributors) TableName() string {
+	return "UserPlaylistContributors"
 }
 
 // RelatedPlaylist model for representing related playlists
@@ -70,6 +90,11 @@ type RelatedPlaylist struct {
 	RelatedPlaylistID uint
 }
 
+// TableName sets the table name for the Playlist model.
+func (RelatedPlaylist) TableName() string {
+	return "RelatedPlaylists"
+}
+
 // PrivacySetting model for defining playlist privacy settings
 type PrivacySetting struct {
 	IsCollaborative bool `json:"isCollaborative" gorm:"default:false"`
@@ -77,21 +102,30 @@ type PrivacySetting struct {
 	// Add more privacy settings as needed
 }
 
+// TableName sets the table name for the Playlist model.
+func (PrivacySetting) TableName() string {
+	return "PrivacySetting"
+}
+
 // PlaylistModel handles database operations for Playlist
 type PlaylistDBModel struct {
-	DB *gorm.DB
+	DB           *gorm.DB
+	VideoDBModel *VideoDBModel
 }
 
 // NewPlaylistModel creates a new instance of PlaylistModel
-func NewPlaylistModel(db *gorm.DB) *PlaylistDBModel {
+func NewPlaylistModel(db *gorm.DB, videoDBModel *VideoDBModel) *PlaylistDBModel {
 	return &PlaylistDBModel{
-		DB: db,
+		DB:           db,
+		VideoDBModel: videoDBModel,
 	}
 }
 
 type PlaylistModel interface {
-	CreatePlaylist(playlist *Playlist) error
+	CreatePlaylist(playlist *Playlist) (*Playlist, error)
+	CreatePlaylist2(playlist *Playlist) error
 	GetAllPlaylists() ([]Playlist, error)
+	GetAllPlaylists2() ([]Playlist, error)
 	GetCurrentPlaylist(id uint) (*Playlist, error)
 	UpdateLastScheduledTime(id uint, lastScheduledTime time.Time) error
 	GetPlaylistsForAdvertisements() ([]Playlist, error)
@@ -118,18 +152,83 @@ type PlaylistModel interface {
 	GetFollowers(playlistID uint) ([]User, error)
 	RemoveAdvertisementFromPlaylist(playlistID, adID uint) error
 	AddAdvertisementToPlaylist(playlistID uint, ad *Advertisement) error
-	RemoveVideoFromPlaylist(playlistID, videoID uint)
-	AddVideoToPlaylist(playlistID uint, video *Video) error
-	UpdatePlaylist(playlist *Playlist) error
+	UpdatePlaylist(playlist *Playlist) (*Playlist, error)
+	UpdatePlaylist2(playlist *Playlist) error
 	GetPlaylistByID(playlistID uint) (*Playlist, error)
+	GetPlaylistByID2(playlistID uint) (*Playlist, error)
 	DeletePlaylist(playlistID uint) error
+	DeletePlaylist2(playlistID uint) error
 	UpdatePlaylistDetails(playlistID uint, updatedDetails Playlist) error
 	AddRelatedPlaylist(playlistID, relatedPlaylistID uint) error
 	RemoveRelatedPlaylist(playlistID, relatedPlaylistID uint) error
+	GetPlaybackStatus(playlistID uint) string
+	GetPlaylistInfo(playlistID uint) string
+	AddToPlaylist(playlistID uint, videoID uint)
+	RemoveFromPlaylist(playlistID uint, videoID uint)
+	GetCurrentVideoInfo(playlistID uint) string
+	PlayVideo(playlistID uint, videoID uint)
+	PauseVideo(playlistID uint)
+	ResumeVideo(playlistID uint)
+	IsVideoPlaying2() bool
+	SkipToPosition(playlistID uint, position int) (int, error)
+	IsVideoPlaying(playlistID uint) bool
+	AdjustVolume(playlistID uint, delta int) int
+	AddVideoToPlaylist(playlistID uint, video *Video) error
+	RemoveVideoFromPlaylist(playlistID uint, videoID uint) error
+	ShufflePlaylist(playlistID uint) error
+	GetCurrentlyPlayingVideoID(playlistID uint) uint
+	GetVideoQueue(playlistID uint) ([]Video, error)
+}
+
+// CreatePlaylist creates a new playlist in the database.
+func (m *PlaylistDBModel) CreatePlaylist(playlist *Playlist) error {
+	return m.DB.Create(playlist).Error
+}
+
+// GetPlaylistByID retrieves a playlist by its ID.
+func (m *PlaylistDBModel) GetPlaylistByID(id uint) (*Playlist, error) {
+	var playlist Playlist
+	err := m.DB.Preload("Videos").Where("id = ?", id).First(&playlist).Error
+	return &playlist, err
+}
+
+// UpdatePlaylist updates the details of an existing playlist.
+func (m *PlaylistDBModel) UpdatePlaylist(playlist *Playlist) error {
+	return m.DB.Save(playlist).Error
+}
+
+// DeletePlaylist deletes a playlist from the database.
+func (m *PlaylistDBModel) DeletePlaylist(id uint) error {
+	return m.DB.Delete(&Playlist{}, id).Error
+}
+
+// GetAllPlaylists retrieves all playlists from the database.
+func (m *PlaylistDBModel) GetAllPlaylists() ([]Playlist, error) {
+	var playlists []Playlist
+	err := m.DB.Find(&playlists).Error
+	return playlists, err
+}
+
+/*-----------------------------------------------------------------------------------------------------------------------*/
+
+func (m *PlaylistDBModel) GetPlaylistByID2(playlistID uint) (*Playlist, error) {
+	var playlist Playlist
+	if err := m.DB.Preload("Videos").First(&playlist, playlistID).Error; err != nil {
+		return nil, err
+	}
+	return &playlist, nil
+}
+
+func (m *PlaylistDBModel) GetAllPlaylists2() ([]*Playlist, error) {
+	var playlists []*Playlist
+	if err := m.DB.Preload("Videos").Find(&playlists).Error; err != nil {
+		return nil, err
+	}
+	return playlists, nil
 }
 
 // GetAllPlaylists retrieves all playlists from the database
-func (m *PlaylistDBModel) GetAllPlaylists() ([]Playlist, error) {
+func (m *PlaylistDBModel) GetAllPlaylists3() ([]Playlist, error) {
 	var playlists []Playlist
 	if err := m.DB.Preload("Contributors").Find(&playlists).Error; err != nil {
 		return nil, err
@@ -139,7 +238,15 @@ func (m *PlaylistDBModel) GetAllPlaylists() ([]Playlist, error) {
 }
 
 // CreatePlaylist creates a new playlist
-func (m *PlaylistDBModel) CreatePlaylist(playlist *Playlist) error {
+func (m *PlaylistDBModel) CreatePlaylist2(playlist *Playlist) (*Playlist, error) {
+	if err := m.DB.Create(playlist).Error; err != nil {
+		return nil, err
+	}
+	return playlist, nil
+}
+
+// CreatePlaylist creates a new playlist
+func (m *PlaylistDBModel) CreatePlaylist3(playlist *Playlist) error {
 	if err := m.DB.Create(playlist).Error; err != nil {
 		return err
 	}
@@ -321,19 +428,36 @@ func sortPlaylistsByPopularity(playlists []Playlist) {
 func (pm *PlaylistDBModel) GetCurrentVideo(playlistID uint) (*Video, error) {
 	// Implement logic to fetch information about the currently playing video from the database for the specified playlistID
 	// For example:
-	// var v Video
-	// pm.DB.Where("playlist_id = ? AND playing = ?", playlistID, true).First(&v)
-	// return &v, nil
-	return &Video{ID: 1, ThumbnailURL: "current_thumbnail.jpg"}, nil // Placeholder value, replace with actual logic
+	var v Video
+	pm.DB.Where("playlist_id = ? AND playing = ?", playlistID, true).First(&v)
+	return &v, nil
+	//return &Video{ID: 1, ThumbnailURL: "current_thumbnail.jpg"}, nil // Placeholder value, replace with actual logic
 }
 
-func (pm *PlaylistDBModel) GetNextVideo(playlistID uint) (*Video, error) {
-	// Implement logic to fetch information about the next video in the playlist from the database for the specified playlistID
-	// For example:
-	// var v Video
-	// pm.DB.Where("playlist_id = ? AND playing = ?", playlistID, false).First(&v)
-	// return &v, nil
-	return &Video{ID: 2, ThumbnailURL: "next_thumbnail.jpg"}, nil // Placeholder value, replace with actual logic
+// GetNextVideo retrieves the next video in the playlist.
+func (m *PlaylistDBModel) GetNextVideo(playlistID uint) (*Video, error) {
+	// Implement logic to get the next video in the playlist
+	// Placeholder code to demonstrate the idea:
+	// This could involve checking the order or index to determine the next video.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil || len(playlist.Videos) == 0 {
+		return nil, errors.New("no videos in the playlist")
+	}
+
+	// Increment the order to get the next video
+	playlist.Order++
+
+	// Reset the order to the beginning if it exceeds the length of the playlist
+	if playlist.Order >= len(playlist.Videos) {
+		playlist.Order = 0
+	}
+
+	// Save the changes to the database
+	if err := m.DB.Save(playlist).Error; err != nil {
+		return nil, err
+	}
+
+	return &playlist.Videos[playlist.Order], nil
 }
 
 // GetTotalDuration retrieves the total duration of the current playlist
@@ -385,48 +509,16 @@ func (m *PlaylistDBModel) GetStartTime(playlistID uint) (time.Time, error) {
 	return playlist.StartTime, nil
 }
 
+func (m *PlaylistDBModel) UpdatePlaylist2(playlist *Playlist) (*Playlist, error) {
+	if err := m.DB.Save(playlist).Error; err != nil {
+		return nil, err
+	}
+	return playlist, nil
+}
+
 // UpdatePlaylist updates the information of a playlist in the database
-func (m *PlaylistDBModel) UpdatePlaylist(playlist *Playlist) error {
+func (m *PlaylistDBModel) UpdatePlaylist3(playlist *Playlist) error {
 	return m.DB.Save(playlist).Error
-}
-
-// AddVideoToPlaylist adds a video to a playlist
-func (m *PlaylistDBModel) AddVideoToPlaylist(playlistID uint, video *Video) error {
-	var playlist Playlist
-	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
-		return err
-	}
-
-	// Assuming you have a relationship set up between Playlist and Video models
-	// Adjust the code accordingly based on your database schema
-	if err := m.DB.Model(&playlist).Association("Videos").Append(video); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// RemoveVideoFromPlaylist removes a video from a playlist
-func (m *PlaylistDBModel) RemoveVideoFromPlaylist(playlistID, videoID uint) error {
-	var playlist Playlist
-	if err := m.DB.Preload("Videos").First(&playlist, playlistID).Error; err != nil {
-		return err
-	}
-
-	// Assuming you have a relationship set up between Playlist and Video models
-	// Adjust the code accordingly based on your database schema
-	for i, video := range playlist.Videos {
-		if video.ID == videoID {
-			playlist.Videos = append(playlist.Videos[:i], playlist.Videos[i+1:]...)
-			break
-		}
-	}
-
-	if err := m.DB.Save(&playlist).Error; err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // AddAdvertisementToPlaylist adds an advertisement to a playlist
@@ -654,7 +746,7 @@ func (m *PlaylistDBModel) UpdatePlaylistDetails(playlistID uint, updatedDetails 
 }
 
 // DeletePlaylist deletes a playlist and its associated records
-func (m *PlaylistDBModel) DeletePlaylist(playlistID uint) error {
+func (m *PlaylistDBModel) DeletePlaylist2(playlistID uint) error {
 	var playlist Playlist
 	if err := m.DB.First(&playlist, playlistID).Error; err != nil {
 		return err
@@ -669,12 +761,251 @@ func (m *PlaylistDBModel) DeletePlaylist(playlistID uint) error {
 	return nil
 }
 
+func (m *PlaylistDBModel) DeletePlaylist3(playlistID uint) error {
+	return m.DB.Delete(&Playlist{}, playlistID).Error
+}
+
 // GetPlaylistByID retrieves a playlist by ID
-func (m *PlaylistDBModel) GetPlaylistByID(playlistID uint) (*Playlist, error) {
+func (m *PlaylistDBModel) GetPlaylistByID3(playlistID uint) (*Playlist, error) {
 	var playlist Playlist
 	if err := m.DB.Preload("Videos").Preload("Advertisements").First(&playlist, playlistID).Error; err != nil {
 		return nil, err
 	}
 
 	return &playlist, nil
+}
+
+// GetPlaybackStatus retrieves the current playback status.
+func (p *PlaylistDBModel) GetPlaybackStatus(playlistID uint) string {
+	// Add logic to retrieve the current playback status
+	// Placeholder code to demonstrate the idea:
+	status := "Status: Playing"
+	return status
+	//return "Status: Playing" // Replace this with actual logic
+}
+
+// GetPlaylistInfo retrieves information about the current playlist.
+func (p *PlaylistDBModel) GetPlaylistInfo(playlistID uint) string {
+	// Add logic to retrieve information about the current playlist
+	// Placeholder code to demonstrate the idea:
+	playlistInfo := "Playlist: My Playlist"
+	return playlistInfo
+	//return "Playlist: My Playlist" // Replace this with actual logic
+}
+
+// GetVideoQueue retrieves the queue of upcoming videos in the playlist.
+func (m *PlaylistDBModel) GetVideoQueue(playlistID uint) ([]Video, error) {
+	// Implement logic to get the queue of upcoming videos in the playlist
+	// Placeholder code to demonstrate the idea:
+	// This could involve returning the remaining videos in the playlist.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil || len(playlist.Videos) == 0 {
+		return nil, errors.New("no videos in the playlist")
+	}
+
+	// Get the remaining videos in the playlist
+	remainingVideos := playlist.Videos[playlist.Order+1:]
+
+	return remainingVideos, nil
+}
+
+// IsVideoPlaying checks if a video is currently playing in the playlist.
+func (m *PlaylistDBModel) IsVideoPlaying(playlistID uint) bool {
+	// Implement logic to check if a video is currently playing in the playlist
+	// Placeholder code to demonstrate the idea:
+	// This could involve checking the IsPlaying field of the playlist.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil {
+		return false
+	}
+	return playlist.IsPlaying
+}
+
+// AdjustVolume adjusts the volume based on the delta value.
+func (m *PlaylistDBModel) AdjustVolume(playlistID uint, delta int) int {
+	// Implement logic to adjust the volume
+	// Placeholder code to demonstrate the idea:
+	// This could involve updating the volume level in the playlist.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil {
+		return 0
+	}
+
+	// Adjust the volume (The actual implementation may vary based on your data model)
+	// For simplicity, we'll just increment the volume level based on the delta.
+	playlist.Order += delta
+
+	// Save the changes to the database
+	if err := m.DB.Save(playlist).Error; err != nil {
+		return 0
+	}
+
+	return playlist.Order
+}
+
+// SkipToPosition skips to the specified position in the playlist.
+func (m *PlaylistDBModel) SkipToPosition(playlistID uint, position int) (int, error) {
+	// Implement logic to skip to a specific position in the playlist
+	// Placeholder code to demonstrate the idea:
+	// This could involve updating the order or index of videos in the playlist
+	// and returning the new position.
+
+	// Retrieve the playlist
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil {
+		return 0, err
+	}
+
+	// Ensure the position is within the valid range
+	if position < 0 || position >= len(playlist.Videos) {
+		return 0, errors.New("invalid position")
+	}
+
+	// Update the order or index of videos in the playlist
+	// (The actual implementation may vary based on your data model)
+	// For simplicity, we'll just set the order based on the position for this example.
+	for i := range playlist.Videos {
+		playlist.Videos[i].Order = position + i
+	}
+
+	// Save the changes to the database
+	if err := m.DB.Save(playlist).Error; err != nil {
+		return 0, err
+	}
+
+	return position, nil
+}
+
+// AddVideoToPlaylist adds a video to the playlist.
+func (m *PlaylistDBModel) AddVideoToPlaylist(playlistID uint, video *Video) error {
+	// Implement logic to add a video to the playlist
+	// Placeholder code to demonstrate the idea:
+	// This could involve updating the Videos field of the playlist.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil {
+		return err
+	}
+
+	// Ensure the video is not already in the playlist
+	for _, existingVideo := range playlist.Videos {
+		if existingVideo.ID == video.ID {
+			return errors.New("video already in the playlist")
+		}
+	}
+
+	// Append the video to the playlist
+	playlist.Videos = append(playlist.Videos, *video)
+
+	// Save the changes to the database
+	if err := m.DB.Save(playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// RemoveVideoFromPlaylist removes a video from the playlist.
+func (m *PlaylistDBModel) RemoveVideoFromPlaylist(playlistID uint, videoID uint) error {
+	// Implement logic to remove a video from the playlist
+	// Placeholder code to demonstrate the idea:
+	// This could involve updating the Videos field of the playlist.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil {
+		return err
+	}
+
+	// Find the index of the video in the playlist
+	var index int
+	for i, existingVideo := range playlist.Videos {
+		if existingVideo.ID == videoID {
+			index = i
+			break
+		}
+	}
+
+	// Remove the video from the playlist
+	playlist.Videos = append(playlist.Videos[:index], playlist.Videos[index+1:]...)
+
+	// Save the changes to the database
+	if err := m.DB.Save(playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ShufflePlaylist shuffles the order of the playlist.
+func (m *PlaylistDBModel) ShufflePlaylist(playlistID uint) error {
+	// Implement logic to shuffle the playlist order
+	// Placeholder code to demonstrate the idea:
+	// This could involve randomizing the order of videos in the playlist.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil {
+		return err
+	}
+
+	// Shuffle the order of videos using Fisher-Yates algorithm
+	rand.Seed(time.Now().UnixNano())
+	n := len(playlist.Videos)
+	for i := n - 1; i > 0; i-- {
+		j := rand.Intn(i + 1)
+		playlist.Videos[i], playlist.Videos[j] = playlist.Videos[j], playlist.Videos[i]
+	}
+
+	// Save the changes to the database
+	if err := m.DB.Save(playlist).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// GetCurrentlyPlayingVideoID retrieves the ID of the currently playing video.
+func (m *PlaylistDBModel) GetCurrentlyPlayingVideoID(playlistID uint) uint {
+	// Implement logic to get the ID of the currently playing video
+	// Placeholder code to demonstrate the idea:
+	// This could involve checking the currently playing video in the playlist.
+	playlist, err := m.GetPlaylistByID(playlistID)
+	if err != nil || !playlist.IsPlaying || len(playlist.Videos) == 0 {
+		return 0
+	}
+
+	return playlist.Videos[playlist.Order].ID
+}
+
+// GetCurrentVideoInfo retrieves information about the currently playing video.
+func (p *PlaylistDBModel) GetCurrentVideoInfo(playlistID uint) string {
+	// Add logic to retrieve information about the currently playing video
+	// Placeholder code to demonstrate the idea:
+	currentVideoInfo := "Currently playing: Video 1"
+	return currentVideoInfo
+	//return "Currently playing: Video 1" // Replace this with actual logic
+}
+
+// PlayVideo plays a specific video in the playlist.
+func (p *PlaylistDBModel) PlayVideo(playlistID uint, videoID uint) (string, error) {
+	// Implement logic to play a specific video in the playlist
+	// Example: Play the specified video
+	videoURL, err := p.VideoDBModel.GetVideoURL(videoID)
+	if err != nil {
+		return "", fmt.Errorf("Error getting video URL: %v", err)
+	}
+
+	// Placeholder code to demonstrate the idea:
+	p.VideoPlayer.Play(videoURL)
+	return fmt.Sprintf("Now playing %v", videoID), nil
+}
+
+// PauseVideo pauses the currently playing video.
+func (p *PlaylistDBModel) PauseVideo(playlistID uint) {
+	// Implement logic to pause the currently playing video
+	// Example: Pause the currently playing video
+	p.VideoPlayer.Pause()
+}
+
+// ResumeVideo resumes playback of the paused video.
+func (p *PlaylistDBModel) ResumeVideo(playlistID uint) {
+	// Implement logic to resume playback of the paused video
+	// Example: Resume playback of the paused video
+	p.VideoPlayer.Resume()
 }

@@ -15,7 +15,7 @@ type Advertisement struct {
 	Name                  string                 `json:"name"`
 	PlaylistID            uint                   `json:"-"`
 	Playlist              Playlist               `json:"playlist"`
-	ContentURL            string                 `json:"contentURL"`
+	ContentURL            string                 `json:"content_url"`
 	Title                 string                 `json:"title"`
 	Description           string                 `json:"description"`
 	Duration              uint                   `json:"duration"` // Duration in seconds
@@ -42,6 +42,7 @@ type Advertisement struct {
 	Language              string                 `json:"language"`
 	Label                 string                 `json:"label"`
 	CreatedAt             time.Time              `json:"createdAt"`
+	DeletedAt             time.Time              `gorm:"index" json:"-"`
 	UpdatedAt             time.Time              `json:"updatedAt"`
 	TargetAudience        string                 `json:"targetAudience"`
 	MatureContent         bool                   `json:"matureContent"`
@@ -54,6 +55,11 @@ type Advertisement struct {
 	VideoID               uint                   `json:"video_id" gorm:"not null"`
 	CreatorUserID         uint                   `json:"creator_user_id"`
 	PlayCount             int                    `json:"playCount" gorm:"default:0"`
+}
+
+// TableName sets the table name for the Advertisement model.
+func (Advertisement) TableName() string {
+	return "advertisements"
 }
 
 // AdvertisementAnalytics struct for tracking advertisement analytics
@@ -78,6 +84,11 @@ type AdvertisementAnalytics struct {
 	// Add more analytics fields as needed
 }
 
+// TableName sets the table name for the Advertisement model.
+func (AdvertisementAnalytics) TableName() string {
+	return "advertisements"
+}
+
 // PrivacySetting struct for advertisement privacy settings
 type AdvertisementPrivacySetting struct {
 	IsPublic       bool   `json:"isPublic" gorm:"default:true"`
@@ -85,6 +96,11 @@ type AdvertisementPrivacySetting struct {
 	AllowComments  bool   `json:"allowComments" gorm:"default:true"`
 	AllowDownloads bool   `json:"allowDownloads" gorm:"default:true"`
 	AllowEmbedding bool   `json:"allowEmbedding" gorm:"default:true"`
+}
+
+// TableName sets the table name for the Advertisement model.
+func (AdvertisementPrivacySetting) TableName() string {
+	return "advertisements"
 }
 
 // Location struct for advertisement location details
@@ -96,6 +112,11 @@ type AdvertisementLocation struct {
 	State         string  `json:"state,omitempty"`
 	ZipCode       string  `json:"zipCode,omitempty"`
 	StreetAddress string  `json:"streetAddress,omitempty"`
+}
+
+// TableName sets the table name for the Advertisement model.
+func (AdvertisementLocation) TableName() string {
+	return "advertisements"
 }
 
 // ExternalLink struct for storing external links related to the advertisement
@@ -111,6 +132,11 @@ type ExternalLink struct {
 	// Add more fields as needed
 }
 
+// TableName sets the table name for the Advertisement model.
+func (ExternalLink) TableName() string {
+	return "advertisements"
+}
+
 // MediaAttachment struct for storing media attachments related to the advertisement
 type AdvertisementMediaAttachment struct {
 	gorm.Model
@@ -122,6 +148,11 @@ type AdvertisementMediaAttachment struct {
 	IsPrimary       bool   `json:"isPrimary" gorm:"default:false"`
 	Order           int    `json:"order" gorm:"default:0"`
 	// Add more fields as needed
+}
+
+// TableName sets the table name for the Advertisement model.
+func (AdvertisementMediaAttachment) TableName() string {
+	return "advertisements"
 }
 
 // Hashtag struct for storing hashtags related to the advertisement
@@ -137,6 +168,11 @@ type AdvertisementHashtag struct {
 	// Add more fields as needed
 }
 
+// TableName sets the table name for the Advertisement model.
+func (AdvertisementHashtag) TableName() string {
+	return "advertisements"
+}
+
 // Hashtag represents a hashtag entity
 type Hashtag struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
@@ -146,12 +182,22 @@ type Hashtag struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// TableName sets the table name for the Advertisement model.
+func (Hashtag) TableName() string {
+	return "advertisements"
+}
+
 // RelatedAd struct for storing related advertisements
 type RelatedAd struct {
 	gorm.Model
 	AdvertisementID        uint `json:"-"`
 	RelatedAdvertisementID uint `json:"relatedAdvertisementID"`
 	Order                  int  `json:"order" gorm:"default:0"`
+}
+
+// TableName sets the table name for the Advertisement model.
+func (RelatedAd) TableName() string {
+	return "advertisements"
 }
 
 // AdvertisementModel handles database operations for Advertisement
@@ -184,6 +230,32 @@ type AdvertisementModel interface {
 	IncrementPlayCount(advertisementID uint)
 }
 
+// GetAdvertisementByID retrieves an advertisement by its ID.
+func (m *AdvertisementDBModel) GetAdvertisementByID(id uint) (*Advertisement, error) {
+	var advertisement Advertisement
+	err := m.DB.Where("id = ?", id).First(&advertisement).Error
+	return &advertisement, err
+}
+
+// UpdateAdvertisement updates the details of an existing advertisement.
+func (m *AdvertisementDBModel) UpdateAdvertisement(advertisement *Advertisement) error {
+	return m.DB.Save(advertisement).Error
+}
+
+// DeleteAdvertisement deletes an advertisement from the database.
+func (m *AdvertisementDBModel) DeleteAdvertisement(id uint) error {
+	return m.DB.Delete(&Advertisement{}, id).Error
+}
+
+// GetAllAdvertisements retrieves all advertisements from the database.
+func (m *AdvertisementDBModel) GetAllAdvertisements() ([]Advertisement, error) {
+	var advertisements []Advertisement
+	err := m.DB.Find(&advertisements).Error
+	return advertisements, err
+}
+
+/*-----------------------------------------------------------------------------------------------------------------------*/
+
 // GetNextAdvertisementForPlaylist fetches the next advertisement to play for a playlist
 func (am *AdvertisementDBModel) GetNextAdvertisementForPlaylist(playlistID uint) (*Advertisement, error) {
 	var advertisement Advertisement
@@ -212,7 +284,7 @@ func (am *AdvertisementDBModel) MarkAdvertisementAsPlayed(advertisementID uint) 
 }
 
 // GetAdvertisementByID fetches an advertisement by its ID
-func (am *AdvertisementDBModel) GetAdvertisementByID(advertisementID uint) (*Advertisement, error) {
+func (am *AdvertisementDBModel) GetAdvertisementByID2(advertisementID uint) (*Advertisement, error) {
 	var advertisement Advertisement
 	if err := am.DB.Preload("Playlist").Preload("Comments").Preload("Followers").Preload("Contributors").Preload("RelatedAds").First(&advertisement, advertisementID).Error; err != nil {
 		return nil, err
@@ -221,7 +293,7 @@ func (am *AdvertisementDBModel) GetAdvertisementByID(advertisementID uint) (*Adv
 }
 
 // GetAllAdvertisements fetches all advertisements
-func (am *AdvertisementDBModel) GetAllAdvertisements() ([]Advertisement, error) {
+func (am *AdvertisementDBModel) GetAllAdvertisements2() ([]Advertisement, error) {
 	var advertisements []Advertisement
 	if err := am.DB.Preload("Playlist").Preload("Comments").Preload("Followers").Preload("Contributors").Preload("RelatedAds").Find(&advertisements).Error; err != nil {
 		return nil, err
@@ -238,7 +310,7 @@ func (am *AdvertisementDBModel) CreateAdvertisement(advertisement *Advertisement
 }
 
 // UpdateAdvertisement updates an existing advertisement
-func (am *AdvertisementDBModel) UpdateAdvertisement(advertisement *Advertisement) error {
+func (am *AdvertisementDBModel) UpdateAdvertisement2(advertisement *Advertisement) error {
 	if err := am.DB.Save(advertisement).Error; err != nil {
 		return err
 	}
@@ -246,7 +318,7 @@ func (am *AdvertisementDBModel) UpdateAdvertisement(advertisement *Advertisement
 }
 
 // DeleteAdvertisement deletes an advertisement by its ID
-func (am *AdvertisementDBModel) DeleteAdvertisement(advertisementID uint) error {
+func (am *AdvertisementDBModel) DeleteAdvertisement2(advertisementID uint) error {
 	if err := am.DB.Delete(&Advertisement{}, advertisementID).Error; err != nil {
 		return err
 	}

@@ -14,28 +14,40 @@ import (
 
 // PlaylistController handles HTTP requests related to playlists
 type PlaylistController struct {
-	playlistService services.DefaultPlaylistService
+	playlistService *services.DefaultPlaylistService
+	videoPlayer     *services.RTSPVideoPlayer
 }
 
 // NewPlaylistController creates a new PlaylistController
-func NewPlaylistController(playlistService services.DefaultPlaylistService) *PlaylistController {
+func NewPlaylistController(playlistService *services.DefaultPlaylistService, videoPlayer *services.RTSPVideoPlayer) *PlaylistController {
 	return &PlaylistController{
 		playlistService: playlistService,
+		videoPlayer:     videoPlayer,
 	}
 }
 
 // PlaylistController handles CRUD operations for playlists
 type PlaylistDBController struct {
-	PlaylistService *services.DefaultPlaylistService
 	DB              *gorm.DB
+	PlaylistService *services.DefaultPlaylistService
+	videoPlayer     *services.RTSPVideoPlayer
 }
 
 // NewPlaylistController creates a new PlaylistController
-func NewPlaylistDBController(db *gorm.DB, playlistService *services.DefaultPlaylistService) *PlaylistDBController {
+func NewPlaylistDBController(db *gorm.DB, playlistService *services.DefaultPlaylistService, videoPlayer *services.RTSPVideoPlayer) *PlaylistDBController {
 	return &PlaylistDBController{
 		DB:              db,
 		PlaylistService: playlistService,
+		videoPlayer:     videoPlayer,
 	}
+}
+
+// PlayVideo plays the specified video in the playlist.
+func (pc *PlaylistController) PlayVideo(c *gin.Context) {
+	// Implement logic to play the specified video based on the request parameters.
+	videoID, _ := strconv.Atoi(c.Param("videoID"))
+	result, _ := pc.playlistService.PlayVideo(uint(videoID))
+	c.JSON(http.StatusOK, gin.H{"message": result})
 }
 
 // GetPlaylists retrieves all playlists
@@ -48,8 +60,41 @@ func (pc *PlaylistDBController) GetPlaylists(c *gin.Context) {
 	c.JSON(200, playlists)
 }
 
+// GetPlaylists retrieves all playlists
+func (pc *PlaylistDBController) GetPlaylists2(c *gin.Context) {
+	// Implement logic to fetch and return all playlists
+	// You can use pc.PlaylistService to get playlists from the service
+	playlists, err := pc.PlaylistService.GetAllPlaylists()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve playlists"})
+		return
+	}
+	c.JSON(http.StatusOK, playlists)
+}
+
 // UpdatePlaylist updates a playlist by ID
 func (pc *PlaylistDBController) UpdatePlaylist(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Params.ByName("id"))
+	//var playlist models.Playlist
+	playlist, err := pc.PlaylistService.GetPlaylistByID(uint(id))
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Playlist not found"})
+		return
+	}
+	if err := c.ShouldBindJSON(&playlist); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		return
+	}
+	updatedPlaylist, err := pc.PlaylistService.UpdatePlaylist(playlist)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update playlist"})
+		return
+	}
+	c.JSON(http.StatusOK, updatedPlaylist)
+}
+
+// UpdatePlaylist updates a playlist by ID
+func (pc *PlaylistDBController) UpdatePlaylist2(c *gin.Context) {
 	id := c.Params.ByName("id")
 	var playlist models.Playlist
 	if err := pc.DB.First(&playlist, id).Error; err != nil {
@@ -69,6 +114,16 @@ func (pc *PlaylistDBController) UpdatePlaylist(c *gin.Context) {
 
 // DeletePlaylist deletes a playlist by ID
 func (pc *PlaylistDBController) DeletePlaylist(c *gin.Context) {
+	id, _ := strconv.Atoi(c.Params.ByName("id"))
+	if _, err := pc.PlaylistService.DeletePlaylist(uint(id)); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Playlist not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"id #" + strconv.Itoa(id): "deleted"})
+}
+
+// DeletePlaylist deletes a playlist by ID
+func (pc *PlaylistDBController) DeletePlaylist2(c *gin.Context) {
 	id := c.Params.ByName("id")
 	var playlist models.Playlist
 	if err := pc.DB.First(&playlist, id).Error; err != nil {
@@ -105,6 +160,23 @@ func (pc *PlaylistDBController) GetPlaylistByID(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, playlist)
 }
 
+// CreatePlaylist handles the HTTP request to create a new playlist.
+func (pc *PlaylistDBController) CreatePlaylist(ctx *gin.Context) {
+	var newPlaylist models.Playlist
+	if err := ctx.ShouldBindJSON(&newPlaylist); err != nil {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		return
+	}
+
+	createdPlaylist, err := pc.PlaylistService.CreatePlaylist(&newPlaylist)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create playlist"})
+		return
+	}
+
+	ctx.JSON(http.StatusCreated, createdPlaylist)
+}
+
 // GetAllPlaylists handles the HTTP request to retrieve all playlists.
 func (pc *PlaylistDBController) GetAllPlaylists2(ctx *gin.Context) {
 	playlists, err := pc.PlaylistService.GetAllPlaylists()
@@ -135,7 +207,7 @@ func (pc *PlaylistDBController) CreatePlaylist2(ctx *gin.Context) {
 // GetAllPlaylists retrieves all playlists
 func (pc *PlaylistDBController) GetAllPlaylists3(c *gin.Context) {
 	// Fetch all playlists from the database
-	playlists, err := models.NewPlaylistModel(pc.DB).GetAllPlaylists()
+	playlists, err := models.NewPlaylistModel(pc.DB, pc.videoPlayer).GetAllPlaylists()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch playlists"})
 		return
@@ -147,14 +219,14 @@ func (pc *PlaylistDBController) GetAllPlaylists3(c *gin.Context) {
 // CreatePlaylist creates a new playlist
 func (pc *PlaylistDBController) CreatePlaylist3(c *gin.Context) {
 	// Bind the request body to a Playlist struct
-	var newPlaylist models.Playlist
+	var newPlaylist *models.Playlist
 	if err := c.ShouldBindJSON(&newPlaylist); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
 		return
 	}
 
 	// Create the playlist in the database
-	err := models.NewPlaylistModel(pc.DB).CreatePlaylist(&newPlaylist)
+	newPlaylist, err := models.NewPlaylistModel(pc.DB).CreatePlaylist(newPlaylist)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create playlist"})
 		return
@@ -176,7 +248,7 @@ func (pc *PlaylistDBController) GetAllPlaylists(c *gin.Context) {
 }
 
 // CreatePlaylist creates a new playlist
-func (pc *PlaylistDBController) CreatePlaylist(c *gin.Context) {
+func (pc *PlaylistDBController) CreatePlaylist4(c *gin.Context) {
 	// Bind the request body to a Playlist struct
 	var newPlaylist models.Playlist
 	if err := c.ShouldBindJSON(&newPlaylist); err != nil {
@@ -186,6 +258,44 @@ func (pc *PlaylistDBController) CreatePlaylist(c *gin.Context) {
 
 	// Create the playlist using the PlaylistService
 	createdPlaylist, err := pc.PlaylistService.CreatePlaylist(&newPlaylist)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create playlist"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, createdPlaylist)
+}
+
+// GetPlaylistByID handles the HTTP request to retrieve a playlist by ID.
+func (pc *PlaylistDBController) GetPlaylistByID5(ctx *gin.Context) {
+	playlistID, _ := strconv.Atoi(ctx.Param("id"))
+	playlist, err := pc.PlaylistService.GetPlaylistByID(uint(playlistID))
+	if err != nil {
+		ctx.JSON(http.StatusNotFound, gin.H{"error": "Playlist not found"})
+		return
+	}
+	ctx.JSON(http.StatusOK, playlist)
+}
+
+// GetAllPlaylists handles the HTTP request to retrieve all playlists.
+func (pc *PlaylistDBController) GetAllPlaylists5(c *gin.Context) {
+	playlists, err := pc.PlaylistService.GetAllPlaylists()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve playlists"})
+		return
+	}
+	c.JSON(http.StatusOK, playlists)
+}
+
+// CreatePlaylist handles the HTTP request to create a new playlist.
+func (pc *PlaylistDBController) CreatePlaylist5(c *gin.Context) {
+	var playlist models.Playlist
+	if err := c.ShouldBindJSON(&playlist); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+		return
+	}
+
+	createdPlaylist, err := pc.PlaylistService.CreatePlaylist(&playlist)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create playlist"})
 		return

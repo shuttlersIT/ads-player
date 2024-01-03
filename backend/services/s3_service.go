@@ -15,6 +15,8 @@ import (
 	"github.com/shuttlersit/ads-player/backend/models"
 )
 
+var S3BaseURL string
+
 // S3Service provides methods for interacting with AWS S3
 type S3Service interface {
 	FetchAdvertisementsFromS3() ([]models.Advertisement, error)
@@ -22,6 +24,7 @@ type S3Service interface {
 	GetVideoContent(videoKey string) ([]byte, error)
 	UploadFile(videokey string, file io.Reader) error
 	DownloadFile(videoKey string) (bytes.Reader, error)
+	GeneratePresignedURL(key string) (string, error)
 }
 
 type S3ServiceDBModel struct {
@@ -47,6 +50,14 @@ func NewDefaultS3Service(bucketURL, region, accessKey, secretKey string) *Defaul
 		SecretKey: secretKey,
 		// Initialize other fields as needed
 	}
+}
+
+// GeneratePresignedURL generates a presigned URL for the specified S3 key
+func (s3 *DefaultS3Service) GeneratePresignedURL(key string) (string, error) {
+	// Implement logic to generate a presigned URL for the specified S3 key
+	// Example: Use an S3 SDK to generate a presigned URL
+	// Replace the following line with your actual implementation
+	return "https://example.com/presigned-url", nil
 }
 
 // UploadFile uploads a file to the S3 bucket with the specified key
